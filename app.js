@@ -1,6 +1,6 @@
 
 // ==========================================
-// KRAKESMP - ACCOUNT & STATISTICS SYSTEM
+// KRAKESMP - ACCOUNT & STATISTICS
 // ==========================================
 
 const SUPABASE_URL = "https://zrijikvllmotgsixcguc.supabase.co";
@@ -18,6 +18,10 @@ let isAdmin = false;
 const money = n =>
   Number(n || 0).toLocaleString("de-DE") + " Coins";
 
+function showMessage(message) {
+  alert(message);
+}
+
 function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;",
@@ -28,23 +32,14 @@ function escapeHTML(value) {
   })[c]);
 }
 
-function showMessage(message) {
-  alert(message);
-}
-
 // ==========================================
 // REGISTRIERUNG
 // ==========================================
 
 async function register() {
-  const username =
-    document.getElementById("username")?.value.trim();
-
-  const email =
-    document.getElementById("email")?.value.trim();
-
-  const password =
-    document.getElementById("password")?.value;
+  const username = document.getElementById("username")?.value.trim();
+  const email = document.getElementById("email")?.value.trim();
+  const password = document.getElementById("password")?.value;
 
   if (!username || !email || !password) {
     return showMessage("Bitte alle Felder ausfüllen!");
@@ -68,9 +63,22 @@ async function register() {
 
   if (error) return showMessage(error.message);
 
-  if (!data.session) {
+  if (!data.session || !data.user) {
     return showMessage(
-      "Account erstellt! Bitte E-Mail bestätigen."
+      "Account erstellt! Bitte bestätige deine E-Mail und logge dich danach ein."
+    );
+  }
+
+  const { error: profileError } = await db
+    .from("ks_players")
+    .insert({
+      id: data.user.id,
+      username
+    });
+
+  if (profileError) {
+    return showMessage(
+      "Profilfehler: " + profileError.message
     );
   }
 
@@ -83,11 +91,8 @@ async function register() {
 // ==========================================
 
 async function login() {
-  const email =
-    document.getElementById("email")?.value.trim();
-
-  const password =
-    document.getElementById("password")?.value;
+  const email = document.getElementById("email")?.value.trim();
+  const password = document.getElementById("password")?.value;
 
   if (!email || !password) {
     return showMessage("Bitte E-Mail und Passwort eingeben!");
@@ -140,19 +145,41 @@ async function loadAccount() {
 
   currentUser = user;
 
-  const { data: profile, error } = await db
-    .from("krake_profiles")
+  let { data: profile, error } = await db
+    .from("ks_players")
     .select("*")
-    .eq("user_id", user.id)
-    .single();
+    .eq("id", user.id)
+    .maybeSingle();
 
   if (error) {
-    showMessage("Profilfehler: " + error.message);
-    return;
+    return showMessage("Profilfehler: " + error.message);
+  }
+
+  // Fehlendes Profil nachträglich erstellen
+  if (!profile) {
+    const username =
+      user.user_metadata?.username ||
+      "Player_" + user.id.slice(0, 8);
+
+    const { data: newProfile, error: insertError } = await db
+      .from("ks_players")
+      .insert({
+        id: user.id,
+        username
+      })
+      .select()
+      .single();
+
+    if (insertError) {
+      return showMessage("Profil konnte nicht erstellt werden: " + insertError.message);
+    }
+
+    profile = newProfile;
   }
 
   currentProfile = profile;
 
+  // Owner-Erkennung
   const { data: adminResult, error: adminError } =
     await db.rpc("krake_is_admin");
 
@@ -173,30 +200,19 @@ function updateInterface() {
   const dashboard = document.getElementById("dashboard");
 
   if (loginPanel) {
-    loginPanel.style.display =
-      currentUser ? "none" : "block";
+    loginPanel.style.display = currentUser ? "none" : "block";
   }
 
   if (dashboard) {
-    dashboard.style.display =
-      currentUser ? "block" : "none";
+    dashboard.style.display = currentUser ? "block" : "none";
   }
 
   if (!currentProfile) return;
 
   const name = document.getElementById("profileName");
-  const balance = document.getElementById("balance");
-
-  if (name) {
-    name.textContent = currentProfile.username;
-  }
-
-  if (balance) {
-    balance.textContent = money(currentProfile.balance);
-  }
+  if (name) name.textContent = currentProfile.username;
 
   const adminButton = document.getElementById("adminLink");
-
   if (adminButton) {
     adminButton.style.display = isAdmin ? "block" : "none";
   }
@@ -215,45 +231,34 @@ async function loadMyStatistics() {
     .eq("user_id", currentUser.id);
 
   if (error) {
-    console.error("Statistikfehler:", error.message);
+    console.error(error.message);
     return;
   }
 
   const rounds = data || [];
 
-  const totalRounds = rounds.length;
+  const wins = rounds.filter(r => r.won).length;
+  const losses = rounds.filter(r => !r.won).length;
 
-  const wins = rounds.filter(r => r.won === true).length;
-
-  const losses = rounds.filter(r => r.won === false).length;
-
-  const winrate = totalRounds > 0
-    ? (wins / totalRounds * 100)
+  const winrate = rounds.length
+    ? wins / rounds.length * 100
     : 0;
 
   const totalStake = rounds.reduce(
-    (sum, r) => sum + Number(r.stake || 0),
-    0
+    (sum, r) => sum + Number(r.stake || 0), 0
   );
 
   const totalProfit = rounds.reduce(
-    (sum, r) => sum + Number(r.result || 0),
-    0
-  );
-
-  const totalLoss = rounds.reduce(
-    (sum, r) => sum + Math.max(0, -Number(r.result || 0)),
-    0
+    (sum, r) => sum + Number(r.result || 0), 0
   );
 
   const values = {
-    myRounds: totalRounds,
+    myRounds: rounds.length,
     myWins: wins,
     myLosses: losses,
     myWinrate: winrate.toFixed(1) + "%",
     myTotalStake: money(totalStake),
-    myProfit: money(totalProfit),
-    myLoss: money(totalLoss)
+    myProfit: money(totalProfit)
   };
 
   for (const [id, value] of Object.entries(values)) {
@@ -263,15 +268,13 @@ async function loadMyStatistics() {
 }
 
 // ==========================================
-// EIGENE SPIELHISTORIE
+// SPIELHISTORIE
 // ==========================================
 
 async function loadMyRounds() {
   if (!currentUser) return;
 
-  const container =
-    document.getElementById("myRoundsList");
-
+  const container = document.getElementById("myRoundsList");
   if (!container) return;
 
   const { data, error } = await db
@@ -281,64 +284,66 @@ async function loadMyRounds() {
     .order("created_at", { ascending: false });
 
   if (error) {
-    container.textContent =
-      "Spielhistorie konnte nicht geladen werden.";
-    console.error(error.message);
+    container.textContent = "Spielhistorie konnte nicht geladen werden.";
     return;
   }
 
-  const rounds = data || [];
-
-  container.innerHTML = rounds.slice(0, 10).map(round => `
+  container.innerHTML = (data || []).slice(0, 20).map(round => `
     <div class="player">
       <b>${escapeHTML(round.game_name)}</b>
       <p>Einsatz: ${money(round.stake)}</p>
       <p>Ergebnis: ${money(round.result)}</p>
-      <p class="${Number(round.result) >= 0 ? "green" : "red"}">
+      <p class="${round.won ? "green" : "red"}">
         ${round.won ? "GEWONNEN" : "VERLOREN"}
       </p>
       <span class="small">
         ${new Date(round.created_at).toLocaleString("de-DE")}
       </span>
     </div>
-  `).join("") || "Noch keine Spielrunden.";
+  `).join("") || "Noch keine Statistiken vorhanden.";
 }
 
 // ==========================================
-// RANGLISTE
+// LEADERBOARD
 // ==========================================
 
 async function loadLeaderboard() {
-  const container =
-    document.getElementById("ranking");
-
+  const container = document.getElementById("ranking");
   if (!container) return;
 
   const { data, error } = await db
-    .from("krake_profiles")
-    .select("username, total_turnover")
-    .order("total_turnover", { ascending: false });
+    .from("ks_players")
+    .select("username, total_profit, total_wins, total_losses, total_rounds")
+    .order("total_profit", { ascending: false });
 
   if (error) {
     container.textContent = "Rangliste konnte nicht geladen werden.";
     return;
   }
 
-  container.innerHTML = (data || []).map((player, index) => `
-    <div class="player">
-      <div class="row">
-        <b>${["🥇", "🥈", "🥉"][index] || "🏅"}
-          ${escapeHTML(player.username)}
-        </b>
-        <b>${index + 1}. Platz</b>
+  container.innerHTML = (data || []).map((p, i) => {
+    const total = Number(p.total_wins) + Number(p.total_losses);
+    const rate = total
+      ? (Number(p.total_wins) / total * 100).toFixed(1)
+      : "0.0";
+
+    return `
+      <div class="player">
+        <div class="row">
+          <b>${["🥇", "🥈", "🥉"][i] || "🏅"}
+            ${escapeHTML(p.username)}</b>
+          <b>${i + 1}. Platz</b>
+        </div>
+        <p>Profit: ${money(p.total_profit)}</p>
+        <p>Winrate: ${rate}%</p>
+        <p>Siege: ${p.total_wins} · Niederlagen: ${p.total_losses}</p>
       </div>
-      <p>Gesamtumsatz: ${money(player.total_turnover)}</p>
-    </div>
-  `).join("") || "Noch keine Spieler.";
+    `;
+  }).join("") || "Noch keine Spieler vorhanden.";
 }
 
 // ==========================================
-// START
+// AUTOMATISCHER START
 // ==========================================
 
 db.auth.onAuthStateChange((event) => {
