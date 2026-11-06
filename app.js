@@ -2,7 +2,7 @@
 "use strict";
 
 // ==========================================
-// KRAKESMP PLAYER SYSTEM
+// KRAKESMP PLAYER SYSTEM V3
 // ==========================================
 
 const SUPABASE_URL =
@@ -13,6 +13,8 @@ const SUPABASE_KEY =
 
 const OWNER_ID =
   "cee3680c-3580-47c5-8c64-0277eac03800";
+
+const FUNCTION_NAME = "owner-api-";
 
 const db = window.supabase.createClient(
   SUPABASE_URL,
@@ -53,7 +55,7 @@ function usernameEmail(username) {
 
 async function api(action, values = {}) {
   const { data, error } = await db.functions.invoke(
-    "owner-api",
+    FUNCTION_NAME,
     {
       body: {
         action,
@@ -63,8 +65,11 @@ async function api(action, values = {}) {
   );
 
   if (error) {
-    console.error("OWNER API:", error);
-    throw new Error(error.message);
+    console.error("EDGE FUNCTION ERROR:", error);
+    throw new Error(
+      "Serververbindung fehlgeschlagen: " +
+      (error.message || "Unbekannter Fehler")
+    );
   }
 
   if (data?.error) {
@@ -99,18 +104,19 @@ $("registerButton").addEventListener("click", async () => {
   const username = $("registerUsername").value.trim();
 
   if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
-    message("Benutzername: 3-20 Zeichen, nur Buchstaben, Zahlen und _.");
-    return;
+    return message(
+      "Benutzername muss 3-20 Zeichen lang sein."
+    );
   }
 
   button.disabled = true;
-  message("Anfrage wird gesendet ...", true);
+  message("Antrag wird gesendet...", true);
 
   try {
     await api("apply", { username });
 
     message(
-      "Anfrage erfolgreich gesendet! Warte auf die Freischaltung.",
+      "Dein Antrag wurde erfolgreich gesendet! Warte auf die Freischaltung.",
       true
     );
 
@@ -118,8 +124,7 @@ $("registerButton").addEventListener("click", async () => {
 
   } catch (error) {
     console.error(error);
-    message("Fehler: " + error.message);
-
+    message(error.message);
   } finally {
     button.disabled = false;
   }
@@ -137,12 +142,11 @@ async function login() {
   const username = $("loginUsername").value.trim();
   const code = $("loginCode").value;
 
-  if (
-    !/^[a-zA-Z0-9_]{3,20}$/.test(username) ||
-    code.length < 12
-  ) {
-    message("Benutzername oder Sicherheitscode ungültig.");
-    return;
+  if (!/^[a-zA-Z0-9_]{3,20}$/.test(username) ||
+      code.length < 12) {
+    return message(
+      "Benutzername oder Sicherheitscode ungültig."
+    );
   }
 
   button.disabled = true;
@@ -170,8 +174,10 @@ async function login() {
 
   } catch (error) {
     console.error("LOGIN:", error);
-    message("Login fehlgeschlagen. Prüfe Benutzername und Sicherheitscode.");
 
+    message(
+      "Login fehlgeschlagen. Prüfe Benutzername und Sicherheitscode."
+    );
   } finally {
     button.disabled = false;
   }
@@ -187,7 +193,10 @@ async function checkPlayer() {
     error: authError
   } = await db.auth.getUser();
 
-  if (authError || !user) return false;
+  if (authError || !user) {
+    message("Anmeldung nicht gefunden.");
+    return false;
+  }
 
   const { data, error } = await db
     .from("ks_players")
@@ -196,12 +205,12 @@ async function checkPlayer() {
     .maybeSingle();
 
   if (error || !data) {
-    message("Spielerprofil nicht verfügbar.");
+    message("Spielerprofil konnte nicht geladen werden.");
     return false;
   }
 
   if (data.is_banned || data.status !== "active") {
-    message("Dein Account ist gesperrt. Bitte Owner kontaktieren.");
+    message("Dein Account ist gesperrt.");
     return false;
   }
 
@@ -214,10 +223,11 @@ async function checkPlayer() {
 
 async function loadDashboard() {
   const {
-    data: { user }
+    data: { user },
+    error: authError
   } = await db.auth.getUser();
 
-  if (!user) return;
+  if (authError || !user) return;
 
   const { data: profile, error } = await db
     .from("ks_players")
@@ -229,6 +239,7 @@ async function loadDashboard() {
 
   if (profile.is_banned || profile.status !== "active") {
     await db.auth.signOut();
+    message("Dein Account ist gesperrt.");
     return;
   }
 
@@ -236,6 +247,7 @@ async function loadDashboard() {
   $("dashboard").hidden = false;
 
   $("profileName").textContent = profile.username;
+
   $("ownerButton").hidden = user.id !== OWNER_ID;
 
   const { data: rounds, error: roundsError } = await db
@@ -323,7 +335,8 @@ async function loadLeaderboard() {
 
   } catch (error) {
     console.error("LEADERBOARD:", error);
-    container.textContent = "Rangliste konnte nicht geladen werden.";
+    container.textContent =
+      "Rangliste konnte nicht geladen werden.";
   }
 }
 
