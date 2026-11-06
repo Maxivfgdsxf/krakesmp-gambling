@@ -2,7 +2,7 @@
 "use strict";
 
 // ==========================================
-// KRAKESMP PLAYER SYSTEM V5
+// KRAKESMP PLAYER SYSTEM
 // ==========================================
 
 const SUPABASE_URL =
@@ -24,10 +24,6 @@ const $ = id => document.getElementById(id);
 const money = n =>
   Number(n || 0).toLocaleString("de-DE") + " Coins";
 
-// ==========================================
-// HTML SICHERHEIT
-// ==========================================
-
 function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({
     "&": "&amp;",
@@ -38,22 +34,13 @@ function escapeHTML(value) {
   })[c]);
 }
 
-// ==========================================
-// NACHRICHTEN
-// ==========================================
-
 function message(text, success = false) {
   const element = $("authMessage");
-
   if (!element) return;
 
   element.textContent = text;
   element.className = success ? "green" : "red";
 }
-
-// ==========================================
-// BENUTZERNAME
-// ==========================================
 
 function usernameEmail(username) {
   return username.toLowerCase() +
@@ -61,61 +48,48 @@ function usernameEmail(username) {
 }
 
 // ==========================================
-// SUPABASE API
+// EDGE FUNCTION API
 // ==========================================
 
 async function api(action, values = {}) {
-  try {
-    const { data, error } = await db.functions.invoke(
-      "owner-api",
-      {
-        body: {
-          action,
-          ...values
-        }
+  const { data, error } = await db.functions.invoke(
+    "owner-api",
+    {
+      method: "POST",
+      body: {
+        action,
+        ...values
       }
+    }
+  );
+
+  if (error) {
+    console.error("EDGE FUNCTION ERROR:", error);
+    throw new Error(
+      "Serververbindung fehlgeschlagen: " + error.message
     );
-
-    if (error) {
-      console.error("EDGE FUNCTION:", error);
-
-      throw new Error(
-        error.message || "Edge Function Fehler."
-      );
-    }
-
-    if (!data) {
-      throw new Error("Keine Antwort vom Server.");
-    }
-
-    if (data.error) {
-      throw new Error(data.error);
-    }
-
-    return data;
-
-  } catch (error) {
-    console.error("API ERROR:", error);
-
-    throw error;
   }
+
+  if (data?.error) {
+    throw new Error(data.error);
+  }
+
+  return data;
 }
 
 // ==========================================
-// LOGIN / REGISTER TABS
+// TABS
 // ==========================================
 
 $("showLogin").addEventListener("click", () => {
   $("loginForm").hidden = false;
   $("registerForm").hidden = true;
-
   message("");
 });
 
 $("showRegister").addEventListener("click", () => {
   $("loginForm").hidden = true;
   $("registerForm").hidden = false;
-
   message("");
 });
 
@@ -125,36 +99,29 @@ $("showRegister").addEventListener("click", () => {
 
 $("registerButton").addEventListener("click", async () => {
   const button = $("registerButton");
-
-  const username =
-    $("registerUsername").value.trim();
+  const username = $("registerUsername").value.trim();
 
   if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
     return message(
-      "Benutzername muss 3-20 Zeichen lang sein."
+      "Benutzername: 3-20 Zeichen, nur Buchstaben, Zahlen und _."
     );
   }
 
   button.disabled = true;
 
-  message("Antrag wird gesendet...", true);
-
   try {
     await api("apply", { username });
 
     message(
-      "Dein Antrag wurde erfolgreich eingereicht! Warte auf die Freischaltung durch den Owner.",
+      "Anfrage erfolgreich gesendet! Warte auf die Freischaltung.",
       true
     );
 
     $("registerUsername").value = "";
 
   } catch (error) {
-    console.error("REGISTER ERROR:", error);
-
-    message(
-      "Fehler: " + error.message
-    );
+    console.error(error);
+    message("Fehler: " + error.message);
 
   } finally {
     button.disabled = false;
@@ -162,7 +129,7 @@ $("registerButton").addEventListener("click", async () => {
 });
 
 // ==========================================
-// SPIELER LOGIN
+// LOGIN
 // ==========================================
 
 $("loginButton").addEventListener("click", login);
@@ -170,11 +137,8 @@ $("loginButton").addEventListener("click", login);
 async function login() {
   const button = $("loginButton");
 
-  const username =
-    $("loginUsername").value.trim();
-
-  const code =
-    $("loginCode").value;
+  const username = $("loginUsername").value.trim();
+  const code = $("loginCode").value;
 
   if (
     !/^[a-zA-Z0-9_]{3,20}$/.test(username) ||
@@ -186,8 +150,6 @@ async function login() {
   }
 
   button.disabled = true;
-
-  message("Anmeldung läuft...", true);
 
   try {
     const { error } = await db.auth.signInWithPassword({
@@ -211,10 +173,10 @@ async function login() {
     message("Erfolgreich eingeloggt!", true);
 
   } catch (error) {
-    console.error("LOGIN ERROR:", error);
+    console.error(error);
 
     message(
-      "Login fehlgeschlagen. Bitte Benutzername und Sicherheitscode prüfen."
+      "Login fehlgeschlagen. Prüfe Benutzername und Sicherheitscode."
     );
 
   } finally {
@@ -232,10 +194,7 @@ async function checkPlayer() {
     error: authError
   } = await db.auth.getUser();
 
-  if (authError || !user) {
-    message("Anmeldung konnte nicht geprüft werden.");
-    return false;
-  }
+  if (authError || !user) return false;
 
   const { data, error } = await db
     .from("ks_players")
@@ -244,18 +203,14 @@ async function checkPlayer() {
     .maybeSingle();
 
   if (error || !data) {
-    console.error("PLAYER:", error);
-
-    message("Spielerprofil nicht gefunden.");
-
+    message("Spielerprofil nicht verfügbar.");
     return false;
   }
 
-  if (
-    data.is_banned ||
-    data.status !== "active"
-  ) {
-    message("Dein Account wurde gesperrt.");
+  if (data.is_banned || data.status !== "active") {
+    message(
+      "Dein Account ist gesperrt. Bitte Owner kontaktieren."
+    );
     return false;
   }
 
@@ -268,11 +223,8 @@ async function checkPlayer() {
 
 async function loadDashboard() {
   const {
-    data: { user },
-    error: authError
+    data: { user }
   } = await db.auth.getUser();
-
-  if (authError) throw authError;
 
   if (!user) return;
 
@@ -284,97 +236,58 @@ async function loadDashboard() {
 
   if (error) throw error;
 
-  if (
-    profile.is_banned ||
-    profile.status !== "active"
-  ) {
+  if (profile.is_banned || profile.status !== "active") {
     await db.auth.signOut();
-
-    $("dashboard").hidden = true;
-    $("loginPanel").hidden = false;
-
-    message("Dein Account ist gesperrt.");
-
     return;
   }
 
   $("loginPanel").hidden = true;
   $("dashboard").hidden = false;
 
-  $("profileName").textContent =
-    profile.username;
+  $("profileName").textContent = profile.username;
 
-  $("ownerButton").hidden =
-    user.id !== OWNER_ID;
+  $("ownerButton").hidden = user.id !== OWNER_ID;
 
-  // ========================================
-  // SPIELRUNDEN LADEN
-  // ========================================
-
-  const { data: rounds, error: roundsError } =
-    await db
-      .from("ks_rounds")
-      .select("game_name, stake, result, won, created_at")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending: false });
+  const { data: rounds, error: roundsError } = await db
+    .from("ks_rounds")
+    .select("game_name, stake, result, won, created_at")
+    .eq("user_id", user.id)
+    .order("created_at", { ascending: false });
 
   if (roundsError) throw roundsError;
 
   const list = rounds || [];
-
-  // ========================================
-  // STATISTIKEN
-  // ========================================
 
   const profit = list.reduce(
     (sum, r) => sum + Number(r.result || 0),
     0
   );
 
-  const wins = list.filter(
-    r => r.won === true
-  ).length;
+  const wins = list.filter(r => r.won === true).length;
 
   const rate = list.length
     ? (wins / list.length * 100).toFixed(1)
     : "0.0";
 
   $("myRounds").textContent = list.length;
+  $("myProfit").textContent = money(profit);
+  $("myWinrate").textContent = rate + "%";
 
-  $("myProfit").textContent =
-    money(profit);
-
-  $("myWinrate").textContent =
-    rate + "%";
-
-  // ========================================
-  // SPIELVERLAUF
-  // ========================================
-
-  $("myRoundsList").innerHTML =
-    list.slice(0, 20).map(r => `
-      <div class="player">
-
-        <b>${escapeHTML(r.game_name)}</b>
-
-        <p>Einsatz: ${money(r.stake)}</p>
-
-        <p>Ergebnis: ${money(r.result)}</p>
-
-        <p class="${r.won ? "green" : "red"}">
-          ${r.won ? "GEWONNEN" : "VERLOREN"}
-        </p>
-
-        <span class="small">
-          ${
-            r.created_at
-              ? new Date(r.created_at).toLocaleString("de-DE")
-              : ""
-          }
-        </span>
-
-      </div>
-    `).join("") || "Noch keine Spielrunden.";
+  $("myRoundsList").innerHTML = list.slice(0, 20).map(r => `
+    <div class="player">
+      <b>${escapeHTML(r.game_name)}</b>
+      <p>Einsatz: ${money(r.stake)}</p>
+      <p>Ergebnis: ${money(r.result)}</p>
+      <p class="${r.won ? "green" : "red"}">
+        ${r.won ? "GEWONNEN" : "VERLOREN"}
+      </p>
+      <span class="small">
+        ${r.created_at
+          ? new Date(r.created_at).toLocaleString("de-DE")
+          : ""}
+      </span>
+    </div>
+  `).join("") || "Noch keine Spielrunden.";
 }
 
 // ==========================================
@@ -382,16 +295,8 @@ async function loadDashboard() {
 // ==========================================
 
 $("logoutButton").addEventListener("click", async () => {
-  try {
-    await db.auth.signOut();
-
-    location.reload();
-
-  } catch (error) {
-    console.error("LOGOUT:", error);
-
-    message("Abmeldung fehlgeschlagen.");
-  }
+  await db.auth.signOut();
+  location.reload();
 });
 
 // ==========================================
@@ -402,40 +307,29 @@ async function loadLeaderboard() {
   const container = $("ranking");
 
   try {
-    const { data, error } =
-      await db.rpc("krake_leaderboard");
+    const { data, error } = await db.rpc("krake_leaderboard");
 
     if (error) throw error;
 
-    container.innerHTML = (data || [])
-      .map((p, i) => `
-        <div class="player">
-
-          <div class="row">
-
-            <b>
-              ${["🥇", "🥈", "🥉"][i] || "🏅"}
-              ${escapeHTML(p.username)}
-            </b>
-
-            <b>${i + 1}. Platz</b>
-
-          </div>
-
-          <p>
-            Profit:
-            <strong>${money(p.total_profit)}</strong>
-          </p>
-
-          <p>
-            Winrate:
-            <strong>
-              ${Number(p.winrate).toFixed(1)}%
-            </strong>
-          </p>
-
+    container.innerHTML = (data || []).map((p, i) => `
+      <div class="player">
+        <div class="row">
+          <b>
+            ${["🥇", "🥈", "🥉"][i] || "🏅"}
+            ${escapeHTML(p.username)}
+          </b>
+          <b>${i + 1}. Platz</b>
         </div>
-      `).join("") || "Noch keine Spieler vorhanden.";
+
+        <p>Profit:
+          <strong>${money(p.total_profit)}</strong>
+        </p>
+
+        <p>Winrate:
+          <strong>${Number(p.winrate).toFixed(1)}%</strong>
+        </p>
+      </div>
+    `).join("") || "Noch keine Spieler vorhanden.";
 
   } catch (error) {
     console.error("LEADERBOARD:", error);
@@ -446,21 +340,15 @@ async function loadLeaderboard() {
 }
 
 // ==========================================
-// SESSION WIEDERHERSTELLEN
+// START
 // ==========================================
 
 async function start() {
   await loadLeaderboard();
 
   const {
-    data: { session },
-    error
+    data: { session }
   } = await db.auth.getSession();
-
-  if (error) {
-    console.error("SESSION:", error);
-    return;
-  }
 
   if (!session) return;
 
@@ -473,16 +361,10 @@ async function start() {
 
   try {
     await loadDashboard();
-
   } catch (error) {
     console.error("DASHBOARD:", error);
-
     message("Dashboard konnte nicht geladen werden.");
   }
 }
-
-// ==========================================
-// START
-// ==========================================
 
 start();
