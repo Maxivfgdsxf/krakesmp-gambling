@@ -1,171 +1,47 @@
 
-async function adminLogin() {
-  const email = document.getElementById("email").value.trim();
-  const password = document.getElementById("password").value;
+-- KRAKESMP OWNER SECURITY
 
-  if (!email || !password) {
-    return showMessage("Bitte Zugangsdaten eingeben!");
-  }
+alter table public.ks_players enable row level security;
+alter table public.ks_rounds enable row level security;
 
-  const { error } = await db.auth.signInWithPassword({
-    email,
-    password
-  });
+-- Öffentliche Rangliste
+drop policy if exists "Leaderboard is public"
+on public.ks_players;
 
-  if (error) return showMessage(error.message);
+create policy "Leaderboard is public"
+on public.ks_players
+for select
+to anon, authenticated
+using (true);
 
-  const { data, error: adminError } =
-    await db.rpc("krake_is_admin");
+-- Spieler dürfen nur eigene Spielrunden lesen
+drop policy if exists "Players see own rounds"
+on public.ks_rounds;
 
-  if (adminError || data !== true) {
-    await db.auth.signOut();
-    return showMessage("Kein Owner-Zugriff!");
-  }
+create policy "Players see own rounds"
+on public.ks_rounds
+for select
+to authenticated
+using (user_id = (select auth.uid()));
 
-  document.getElementById("loginPanel").style.display = "none";
-  document.getElementById("adminPanel").style.display = "block";
+-- Owner darf alle Spielrunden lesen
+create policy "Owner reads all rounds"
+on public.ks_rounds
+for select
+to authenticated
+using ((select public.krake_is_admin()));
 
-  document.getElementById("status").textContent = "OWNER AKTIV";
+-- Owner darf Spielrunden eintragen
+create policy "Owner inserts rounds"
+on public.ks_rounds
+for insert
+to authenticated
+with check ((select public.krake_is_admin()));
 
-  await loadAdminData();
-}
-
-async function loadAdminData() {
-  const { data: players, error } = await db
-    .from("ks_players")
-    .select("*")
-    .order("total_profit", { ascending: false });
-
-  if (error) return showMessage(error.message);
-
-  document.getElementById("playerCount").textContent = players.length;
-
-  document.getElementById("totalTurnover").textContent =
-    money(players.reduce(
-      (sum, p) => sum + Number(p.total_profit || 0), 0
-    ));
-
-  document.getElementById("players").innerHTML =
-    players.map(p => `
-      <div class="player">
-        <b>${escapeHTML(p.username)}</b>
-        <p>Profit: ${money(p.total_profit)}</p>
-        <p>Siege: ${p.total_wins} | Niederlagen: ${p.total_losses}</p>
-        <p>Runden: ${p.total_rounds}</p>
-      </div>
-    `).join("") || "Keine Spieler vorhanden.";
-
-  document.getElementById("roundUser").innerHTML =
-    players.map(p => `
-      <option value="${p.id}">
-        ${escapeHTML(p.username)}
-      </option>
-    `).join("");
-
-  await loadRecentRounds();
-}
-
-async function addRound() {
-  const userId = document.getElementById("roundUser").value;
-  const gameName = document.getElementById("gameName").value.trim();
-  const stake = Number(document.getElementById("stake").value);
-  const result = Number(document.getElementById("result").value);
-  const won = document.getElementById("won").value === "true";
-
-  if (!userId || !gameName) {
-    return showMessage("Bitte Spieler und Spielname auswählen!");
-  }
-
-  if (
-    !Number.isSafeInteger(stake) || stake < 0 ||
-    !Number.isSafeInteger(result)
-  ) {
-    return showMessage("Ungültige Zahlen!");
-  }
-
-  if (!confirm("Statistik wirklich eintragen?")) return;
-
-  // Nur der Owner darf Statistiken bearbeiten.
-  const { data: allowed, error: authError } =
-    await db.rpc("krake_is_admin");
-
-  if (authError || allowed !== true) {
-    return showMessage("Owner-Zugriff verweigert!");
-  }
-
-  const { error } = await db
-    .from("ks_rounds")
-    .insert({
-      user_id: userId,
-      game_name: gameName,
-      stake,
-      result,
-      won
-    });
-
-  if (error) return showMessage(error.message);
-
-  const { data: profile, error: profileError } = await db
-    .from("ks_players")
-    .select("total_profit,total_wins,total_losses,total_rounds")
-    .eq("id", userId)
-    .single();
-
-  if (profileError) return showMessage(profileError.message);
-
-  const { error: updateError } = await db
-    .from("ks_players")
-    .update({
-      total_profit: Number(profile.total_profit) + result,
-      total_wins: Number(profile.total_wins) + (won ? 1 : 0),
-      total_losses: Number(profile.total_losses) + (won ? 0 : 1),
-      total_rounds: Number(profile.total_rounds) + 1
-    })
-    .eq("id", userId);
-
-  if (updateError) {
-    return showMessage(
-      "Runde gespeichert, aber Profil-Update fehlgeschlagen: " +
-      updateError.message
-    );
-  }
-
-  document.getElementById("gameName").value = "";
-  document.getElementById("stake").value = "";
-  document.getElementById("result").value = "";
-
-  showMessage("Statistik erfolgreich gespeichert!");
-
-  await loadAdminData();
-  await loadLeaderboard();
-}
-
-async function loadRecentRounds() {
-  const container = document.getElementById("roundList");
-
-  const { data, error } = await db
-    .from("ks_rounds")
-    .select("*")
-    .order("created_at", { ascending: false })
-    .limit(15);
-
-  if (error) {
-    container.textContent = error.message;
-    return;
-  }
-
-  container.innerHTML = (data || []).map(r => `
-    <div class="player">
-      <b>${escapeHTML(r.game_name)}</b>
-      <p>Spieler-ID: ${escapeHTML(r.user_id)}</p>
-      <p>Einsatz: ${money(r.stake)}</p>
-      <p>Ergebnis: ${money(r.result)}</p>
-      <p>${r.won ? "Gewonnen" : "Verloren"}</p>
-    </div>
-  `).join("") || "Noch keine Einträge.";
-}
-
-async function adminLogout() {
-  await db.auth.signOut();
-  location.href = "index.html";
-}
+-- Owner darf Spielerstatistiken bearbeiten
+create policy "Owner updates players"
+on public.ks_players
+for update
+to authenticated
+using ((select public.krake_is_admin()))
+with check ((select public.krake_is_admin()));
