@@ -1,0 +1,102 @@
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KRAKESMP OWNER PANEL</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+
+<body>
+
+<header>
+  <h1>👑 OWNER PANEL</h1>
+  <p>KRAKESMP MANAGEMENT</p>
+</header>
+
+<main>
+
+<section class="card" id="loginPanel">
+  <h2>🔐 OWNER LOGIN</h2>
+  <input id="email" type="email" placeholder="Owner E-Mail">
+  <input id="password" type="password" placeholder="Passwort">
+  <button onclick="adminLogin()">EINLOGGEN</button>
+  <button class="secondary" onclick="location.href='index.html'">
+    ZURÜCK ZUM LEADERBOARD
+  </button>
+</section>
+
+<section class="card" id="adminPanel" style="display:none">
+
+  <h2>👑 OWNER AKTIV</h2>
+  <p class="green" id="status">Owner angemeldet</p>
+
+  <hr>
+
+  <h3>📊 SPIELERÜBERSICHT</h3>
+
+  <div class="stats">
+    <div class="stat">
+      Spieler
+      <b id="playerCount">0</b>
+    </div>
+    <div class="stat">
+      Gesamtumsatz
+      <b id="totalTurnover">0 Coins</b>
+    </div>
+  </div>
+
+  <div id="players">Lade Spieler...</div>
+
+  <hr>
+
+  <h3>➕ STATISTIK EINTRAGEN</h3>
+
+  <label>Spieler</label>
+  <select id="roundUser"></select>
+
+  <label>Spielname</label>
+  <input id="gameName" placeholder="z.B. Event oder Turnier">
+
+  <label>Einsatz</label>
+  <input id="stake" type="number" min="0" placeholder="Einsatz">
+
+  <label>Ergebnis (Profit oder Verlust)</label>
+  <input id="result" type="number" placeholder="z.B. 500 oder -200">
+
+  <label>Ergebnis</label>
+  <select id="won">
+    <option value="true">Gewonnen</option>
+    <option value="false">Verloren</option>
+  </select>
+
+  <button onclick="addRound()">STATISTIK SPEICHERN</button>
+
+  <hr>
+
+  <h3>📜 LETZTE EINTRÄGE</h3>
+  <div id="roundList">Noch keine Einträge.</div>
+
+  <hr>
+
+  <button class="secondary" onclick="adminLogout()">
+    ABMELDEN
+  </button>
+
+  <button class="secondary" onclick="location.href='index.html'">
+    ZURÜCK ZUR WEBSITE
+  </button>
+
+</section>
+
+</main>
+
+<footer>KRAKESMP · PRIVATE OWNER AREA</footer>
+
+<script src="app.js"></script>
+<script src="admin.js"></script>
+
+</body>
+</html>
