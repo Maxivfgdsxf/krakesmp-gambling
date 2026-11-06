@@ -1,7 +1,9 @@
 
 // ==========================================
-// KRAKESMP OWNER PANEL
+// KRAKESMP - OWNER PANEL
 // ==========================================
+
+let editingRoundId = null;
 
 async function adminLogin() {
   const email = document.getElementById("email").value.trim();
@@ -32,72 +34,75 @@ async function adminLogin() {
 }
 
 // ==========================================
-// SPIELER LADEN
+// SPIELER UND STATISTIKEN
 // ==========================================
 
 async function loadAdminData() {
   const { data: players, error } = await db
     .from("krake_profiles")
-    .select("user_id, username, total_turnover")
+    .select("user_id, username")
     .order("username");
 
   if (error) return showMessage(error.message);
 
+  const { data: rounds, error: roundError } = await db
+    .from("ks_rounds")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (roundError) return showMessage(roundError.message);
+
+  const allPlayers = players || [];
+  const allRounds = rounds || [];
+
   document.getElementById("playerCount").textContent =
-    players.length;
+    allPlayers.length;
+
+  document.getElementById("totalTurnover").textContent =
+    money(allRounds.reduce((s, r) => s + Number(r.stake), 0));
 
   const select = document.getElementById("roundUser");
 
-  select.innerHTML = players.map(p => `
+  select.innerHTML = allPlayers.map(p => `
     <option value="${p.user_id}">
       ${escapeHTML(p.username)}
     </option>
   `).join("");
 
   document.getElementById("players").innerHTML =
-    players.map(p => `
-      <div class="player">
-        <b>${escapeHTML(p.username)}</b>
-        <p>Umsatz: ${money(p.total_turnover)}</p>
-        <button onclick="editPlayer('${p.user_id}')">
-          STATISTIKEN ANSEHEN
-        </button>
-      </div>
-    `).join("") || "Keine Spieler.";
+    allPlayers.map(p => {
+      const own = allRounds.filter(r => r.user_id === p.user_id);
+      const wins = own.filter(r => r.won).length;
+      const losses = own.filter(r => !r.won).length;
+      const profit = own.reduce((s, r) => s + Number(r.result), 0);
+      const rate = own.length ? wins / own.length * 100 : 0;
 
-  await loadAdminRounds();
-}
-
-// ==========================================
-// GESAMTUMSATZ
-// ==========================================
-
-async function loadAdminRounds() {
-  const { data, error } = await db
-    .from("ks_rounds")
-    .select("*")
-    .order("created_at", { ascending: false });
-
-  if (error) return showMessage(error.message);
-
-  const rounds = data || [];
-
-  document.getElementById("totalTurnover").textContent =
-    money(rounds.reduce((sum, r) => sum + Number(r.stake), 0));
+      return `
+        <div class="player">
+          <b>${escapeHTML(p.username)}</b>
+          <p>Runden: ${own.length}</p>
+          <p>Siege: ${wins} | Niederlagen: ${losses}</p>
+          <p>Winrate: ${rate.toFixed(1)}%</p>
+          <p>Profit: ${money(profit)}</p>
+          <p>Umsatz: ${money(
+            own.reduce((s, r) => s + Number(r.stake), 0)
+          )}</p>
+        </div>
+      `;
+    }).join("") || "Keine Spieler.";
 
   document.getElementById("roundList").innerHTML =
-    rounds.slice(0, 30).map(r => `
+    allRounds.slice(0, 50).map(r => `
       <div class="player">
         <b>${escapeHTML(r.game_name)}</b>
         <p>Spieler-ID: ${escapeHTML(r.user_id)}</p>
         <p>Einsatz: ${money(r.stake)}</p>
         <p>Profit: ${money(r.result)}</p>
         <p>${r.won ? "GEWONNEN" : "VERLOREN"}</p>
-        <button onclick="deleteRound(${r.id})">
-          EINTRAG LÖSCHEN
-        </button>
+        <button onclick="editRound(${r.id})">BEARBEITEN</button>
+        <button class="danger" onclick="deleteRound(${r.id})">LÖSCHEN</button>
       </div>
-    `).join("") || "Keine Einträge.";
+    `).join("") || "Noch keine Einträge.";
 }
 
 // ==========================================
@@ -114,60 +119,99 @@ async function addRound() {
   if (!userId || !gameName ||
       !Number.isSafeInteger(stake) || stake < 0 ||
       !Number.isSafeInteger(result)) {
-    return showMessage("Bitte gültige Daten eingeben!");
+    return showMessage("Bitte gültige Werte eingeben!");
+  }
+
+  const { error } = await db.from("ks_rounds").insert({
+    user_id: userId,
+    game_name: gameName,
+    stake,
+    result,
+    won
+  });
+
+  if (error) return showMessage(error.message);
+
+  resetRoundForm();
+  showMessage("Statistik gespeichert!");
+  await loadAdminData();
+}
+
+// ==========================================
+// STATISTIK BEARBEITEN
+// ==========================================
+
+async function editRound(id) {
+  const { data, error } = await db
+    .from("ks_rounds")
+    .select("*")
+    .eq("id", id)
+    .single();
+
+  if (error) return showMessage(error.message);
+
+  editingRoundId = id;
+
+  document.getElementById("roundUser").value = data.user_id;
+  document.getElementById("gameName").value = data.game_name;
+  document.getElementById("stake").value = data.stake;
+  document.getElementById("result").value = data.result;
+  document.getElementById("won").value = String(data.won);
+
+  document.getElementById("saveRoundButton").textContent =
+    "ÄNDERUNGEN SPEICHERN";
+
+  window.scrollTo({ top: 0, behavior: "smooth" });
+}
+
+// ==========================================
+// SPEICHERN / AKTUALISIEREN
+// ==========================================
+
+async function saveRound() {
+  if (!editingRoundId) return addRound();
+
+  const userId = document.getElementById("roundUser").value;
+  const gameName = document.getElementById("gameName").value.trim();
+  const stake = Number(document.getElementById("stake").value);
+  const result = Number(document.getElementById("result").value);
+  const won = document.getElementById("won").value === "true";
+
+  if (!userId || !gameName ||
+      !Number.isSafeInteger(stake) || stake < 0 ||
+      !Number.isSafeInteger(result)) {
+    return showMessage("Ungültige Eingaben!");
   }
 
   const { error } = await db
     .from("ks_rounds")
-    .insert({
-      user_id: userId,
-      game_name: gameName,
-      stake,
-      result,
-      won
-    });
+    .update({ user_id: userId, game_name: gameName, stake, result, won })
+    .eq("id", editingRoundId);
 
   if (error) return showMessage(error.message);
+
+  resetRoundForm();
+  showMessage("Statistik aktualisiert!");
+  await loadAdminData();
+}
+
+// ==========================================
+// FORMULAR ZURÜCKSETZEN
+// ==========================================
+
+function resetRoundForm() {
+  editingRoundId = null;
 
   document.getElementById("gameName").value = "";
   document.getElementById("stake").value = "";
   document.getElementById("result").value = "";
 
-  showMessage("Statistik gespeichert!");
-
-  await loadAdminData();
+  document.getElementById("saveRoundButton").textContent =
+    "STATISTIK SPEICHERN";
 }
 
 // ==========================================
-// SPIELERSTATISTIK
-// ==========================================
-
-async function editPlayer(userId) {
-  const { data, error } = await db
-    .from("ks_rounds")
-    .select("*")
-    .eq("user_id", userId);
-
-  if (error) return showMessage(error.message);
-
-  const rounds = data || [];
-  const wins = rounds.filter(r => r.won).length;
-  const losses = rounds.filter(r => !r.won).length;
-  const profit = rounds.reduce((s, r) => s + Number(r.result), 0);
-
-  showMessage(
-    "Spielerstatistik\n" +
-    "Runden: " + rounds.length +
-    "\nSiege: " + wins +
-    "\nNiederlagen: " + losses +
-    "\nWinrate: " +
-    (rounds.length ? (wins / rounds.length * 100).toFixed(1) : 0) +
-    "%\nProfit: " + money(profit)
-  );
-}
-
-// ==========================================
-// EINTRAG LÖSCHEN
+// LÖSCHEN
 // ==========================================
 
 async function deleteRound(id) {
@@ -180,7 +224,7 @@ async function deleteRound(id) {
 
   if (error) return showMessage(error.message);
 
-  showMessage("Eintrag gelöscht!");
+  showMessage("Statistik gelöscht!");
   await loadAdminData();
 }
 
