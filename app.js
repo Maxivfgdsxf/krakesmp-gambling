@@ -1,9 +1,17 @@
+
 // ==========================================
 // KRAKESMP - ACCOUNT & STATISTICS SYSTEM
 // ==========================================
 
+// SUPABASE VERBINDUNG
 const SUPABASE_URL = "https://zrijikvllmotgsixcguc.supabase.co";
-const SUPABASE_KEY = "sb_publishable_DVDRAKqYV92NtT1FcYYLLw_Uzs";
+
+const SUPABASE_KEY = "DEIN_VOLLSTAENDIGER_PUBLISHABLE_KEY";
+
+// Supabase Client erstellen
+if (!window.supabase) {
+  throw new Error("Supabase wurde nicht geladen! Bitte index.html prüfen.");
+}
 
 const db = window.supabase.createClient(
   SUPABASE_URL,
@@ -15,6 +23,10 @@ let currentProfile = null;
 let isAdmin = false;
 
 const OWNER_ID = "cee3680c-3580-47c5-8c64-0277eac03800";
+
+// ==========================================
+// HILFSFUNKTIONEN
+// ==========================================
 
 const money = n =>
   Number(n || 0).toLocaleString("de-DE") + " Coins";
@@ -38,14 +50,9 @@ function escapeHTML(value) {
 // ==========================================
 
 async function register() {
-  const username =
-    document.getElementById("username")?.value.trim();
-
-  const email =
-    document.getElementById("email")?.value.trim();
-
-  const password =
-    document.getElementById("password")?.value;
+  const username = document.getElementById("username")?.value.trim();
+  const email = document.getElementById("email")?.value.trim();
+  const password = document.getElementById("password")?.value;
 
   if (!username || !email || !password) {
     return showMessage("Bitte alle Felder ausfüllen!");
@@ -83,11 +90,8 @@ async function register() {
 // ==========================================
 
 async function login() {
-  const email =
-    document.getElementById("email")?.value.trim();
-
-  const password =
-    document.getElementById("password")?.value;
+  const email = document.getElementById("email")?.value.trim();
+  const password = document.getElementById("password")?.value;
 
   if (!email || !password) {
     return showMessage("Bitte E-Mail und Passwort eingeben!");
@@ -162,7 +166,6 @@ async function loadAccount() {
   }
 
   currentProfile = profile;
-
   isAdmin = user.id === OWNER_ID;
 
   updateInterface();
@@ -176,35 +179,27 @@ async function loadAccount() {
 // ==========================================
 
 function updateInterface() {
-  const loginPanel =
-    document.getElementById("loginPanel");
-
-  const dashboard =
-    document.getElementById("dashboard");
+  const loginPanel = document.getElementById("loginPanel");
+  const dashboard = document.getElementById("dashboard");
 
   if (loginPanel) {
-    loginPanel.style.display =
-      currentUser ? "none" : "block";
+    loginPanel.style.display = currentUser ? "none" : "block";
   }
 
   if (dashboard) {
-    dashboard.style.display =
-      currentUser ? "block" : "none";
+    dashboard.style.display = currentUser ? "block" : "none";
   }
 
-  const name =
-    document.getElementById("profileName");
+  const name = document.getElementById("profileName");
 
   if (name && currentProfile) {
     name.textContent = currentProfile.username;
   }
 
-  const adminButton =
-    document.getElementById("adminLink");
+  const adminButton = document.getElementById("adminLink");
 
   if (adminButton) {
-    adminButton.style.display =
-      isAdmin ? "block" : "none";
+    adminButton.style.display = isAdmin ? "block" : "none";
   }
 }
 
@@ -221,7 +216,7 @@ async function loadMyStatistics() {
     .eq("user_id", currentUser.id);
 
   if (error) {
-    console.error(error.message);
+    console.error("Statistikfehler:", error.message);
     return;
   }
 
@@ -264,8 +259,7 @@ async function loadMyStatistics() {
 async function loadMyRounds() {
   if (!currentUser) return;
 
-  const container =
-    document.getElementById("myRoundsList");
+  const container = document.getElementById("myRoundsList");
 
   if (!container) return;
 
@@ -278,6 +272,7 @@ async function loadMyRounds() {
   if (error) {
     container.textContent =
       "Spielhistorie konnte nicht geladen werden.";
+    console.error(error);
     return;
   }
 
@@ -303,10 +298,11 @@ async function loadMyRounds() {
 // ==========================================
 
 async function loadLeaderboard() {
-  const container =
-    document.getElementById("ranking");
+  const container = document.getElementById("ranking");
 
   if (!container) return;
+
+  container.textContent = "Rangliste wird geladen...";
 
   const { data, error } = await db
     .from("ks_players")
@@ -316,7 +312,8 @@ async function loadLeaderboard() {
   if (error) {
     container.textContent =
       "Rangliste konnte nicht geladen werden: " + error.message;
-    console.error(error);
+
+    console.error("Ranglistenfehler:", error);
     return;
   }
 
