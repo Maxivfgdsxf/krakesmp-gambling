@@ -1,4 +1,4 @@
-
+javascript
 // ==========================================
 // KRAKESMP - OWNER PANEL
 // ==========================================
@@ -14,7 +14,8 @@ async function adminLogin() {
   }
 
   const { error } = await db.auth.signInWithPassword({
-    email, password
+    email,
+    password
   });
 
   if (error) return showMessage(error.message);
@@ -30,6 +31,8 @@ async function adminLogin() {
   document.getElementById("loginPanel").style.display = "none";
   document.getElementById("adminPanel").style.display = "block";
 
+  document.getElementById("status").textContent = "OWNER AKTIV";
+
   await loadAdminData();
 }
 
@@ -40,8 +43,8 @@ async function adminLogin() {
 async function loadAdminData() {
   const { data: players, error } = await db
     .from("ks_players")
-    .select("*")
-    .order("total_profit", { ascending: false });
+    .select("id, username, total_profit, total_wins, total_losses, total_rounds")
+    .order("username");
 
   if (error) return showMessage(error.message);
 
@@ -59,56 +62,71 @@ async function loadAdminData() {
     allPlayers.length;
 
   document.getElementById("totalTurnover").textContent =
-    money(allRounds.reduce((s, r) => s + Number(r.stake || 0), 0));
+    money(allRounds.reduce((sum, r) => sum + Number(r.stake || 0), 0));
 
-  document.getElementById("roundUser").innerHTML =
-    allPlayers.map(p => `
-      <option value="${p.id}">
-        ${escapeHTML(p.username)}
-      </option>
-    `).join("");
+  const select = document.getElementById("roundUser");
+
+  select.innerHTML = `
+    <option value="">Spieler auswählen...</option>
+    ${allPlayers.map(p => `
+      <option value="${p.id}">${escapeHTML(p.username)}</option>
+    `).join("")}
+  `;
 
   document.getElementById("players").innerHTML =
     allPlayers.map(p => {
-      const wins = Number(p.total_wins || 0);
-      const losses = Number(p.total_losses || 0);
-      const total = wins + losses;
-      const rate = total ? wins / total * 100 : 0;
+      const own = allRounds.filter(r => r.user_id === p.id);
+
+      const wins = own.filter(r => r.won === true).length;
+      const losses = own.filter(r => r.won === false).length;
+
+      const profit = own.reduce(
+        (sum, r) => sum + Number(r.result || 0), 0
+      );
+
+      const rate = own.length
+        ? (wins / own.length * 100).toFixed(1)
+        : "0.0";
 
       return `
         <div class="player">
           <b>${escapeHTML(p.username)}</b>
-          <p>Runden: ${p.total_rounds}</p>
+          <p>Runden: ${own.length}</p>
           <p>Siege: ${wins} | Niederlagen: ${losses}</p>
-          <p>Winrate: ${rate.toFixed(1)}%</p>
-          <p>Profit: ${money(p.total_profit)}</p>
+          <p>Winrate: ${rate}%</p>
+          <p>Profit: ${money(profit)}</p>
+          <p>Umsatz: ${money(
+            own.reduce((sum, r) => sum + Number(r.stake || 0), 0)
+          )}</p>
         </div>
       `;
-    }).join("") || "Keine Spieler.";
+    }).join("") || "Keine Spieler vorhanden.";
 
   document.getElementById("roundList").innerHTML =
-    allRounds.slice(0, 50).map(r => {
-      const player = allPlayers.find(p => p.id === r.user_id);
+    allRounds.slice(0, 50).map(r => `
+      <div class="player">
+        <b>${escapeHTML(r.game_name)}</b>
+        <p>Spieler-ID: ${escapeHTML(r.user_id)}</p>
+        <p>Einsatz: ${money(r.stake)}</p>
+        <p>Profit: ${money(r.result)}</p>
+        <p>${r.won ? "GEWONNEN" : "VERLOREN"}</p>
 
-      return `
-        <div class="player">
-          <b>${escapeHTML(player?.username || "Unbekannt")}</b>
-          <p>${escapeHTML(r.game_name)}</p>
-          <p>Einsatz: ${money(r.stake)}</p>
-          <p>Ergebnis: ${money(r.result)}</p>
-          <p>${r.won ? "GEWONNEN" : "VERLOREN"}</p>
-          <button onclick="editRound(${r.id})">BEARBEITEN</button>
-          <button class="danger" onclick="deleteRound(${r.id})">LÖSCHEN</button>
-        </div>
-      `;
-    }).join("") || "Noch keine Einträge.";
+        <button onclick="editRound(${r.id})">
+          BEARBEITEN
+        </button>
+
+        <button class="danger" onclick="deleteRound(${r.id})">
+          LÖSCHEN
+        </button>
+      </div>
+    `).join("") || "Noch keine Einträge.";
 }
 
 // ==========================================
-// RUNDE SPEICHERN
+// STATISTIK SPEICHERN
 // ==========================================
 
-async function addRound() {
+async function saveRound() {
   const userId = document.getElementById("roundUser").value;
   const gameName = document.getElementById("gameName").value.trim();
   const stake = Number(document.getElementById("stake").value);
@@ -116,29 +134,55 @@ async function addRound() {
   const result = Number(resultText);
   const won = document.getElementById("won").value === "true";
 
-  if (!userId || !gameName ||
-      !Number.isSafeInteger(stake) || stake < 0 ||
-      resultText === "" || !Number.isSafeInteger(result)) {
+  if (
+    !userId ||
+    !gameName ||
+    !Number.isSafeInteger(stake) ||
+    stake < 0 ||
+    resultText === "" ||
+    !Number.isSafeInteger(result)
+  ) {
     return showMessage("Bitte gültige Werte eingeben!");
   }
 
-  const { error } = await db.from("ks_rounds").insert({
-    user_id: userId,
-    game_name: gameName,
-    stake,
-    result,
-    won
-  });
+  let response;
 
-  if (error) return showMessage(error.message);
+  if (editingRoundId !== null) {
+    response = await db
+      .from("ks_rounds")
+      .update({
+        user_id: userId,
+        game_name: gameName,
+        stake,
+        result,
+        won
+      })
+      .eq("id", editingRoundId);
+  } else {
+    response = await db
+      .from("ks_rounds")
+      .insert({
+        user_id: userId,
+        game_name: gameName,
+        stake,
+        result,
+        won
+      });
+  }
+
+  if (response.error) {
+    return showMessage(response.error.message);
+  }
 
   resetRoundForm();
-  showMessage("Statistik gespeichert!");
+
+  showMessage("Statistik erfolgreich gespeichert!");
+
   await loadAdminData();
 }
 
 // ==========================================
-// RUNDE BEARBEITEN
+// BEARBEITEN
 // ==========================================
 
 async function editRound(id) {
@@ -165,60 +209,24 @@ async function editRound(id) {
 }
 
 // ==========================================
-// ÄNDERUNGEN SPEICHERN
-// ==========================================
-
-async function saveRound() {
-  if (!editingRoundId) return addRound();
-
-  const userId = document.getElementById("roundUser").value;
-  const gameName = document.getElementById("gameName").value.trim();
-  const stake = Number(document.getElementById("stake").value);
-  const resultText = document.getElementById("result").value;
-  const result = Number(resultText);
-  const won = document.getElementById("won").value === "true";
-
-  if (!userId || !gameName ||
-      !Number.isSafeInteger(stake) || stake < 0 ||
-      resultText === "" || !Number.isSafeInteger(result)) {
-    return showMessage("Ungültige Eingaben!");
-  }
-
-  const { error } = await db
-    .from("ks_rounds")
-    .update({
-      user_id: userId,
-      game_name: gameName,
-      stake,
-      result,
-      won
-    })
-    .eq("id", editingRoundId);
-
-  if (error) return showMessage(error.message);
-
-  resetRoundForm();
-  showMessage("Statistik aktualisiert!");
-  await loadAdminData();
-}
-
-// ==========================================
-// FORMULAR ZURÜCKSETZEN
+// FORMULAR RESET
 // ==========================================
 
 function resetRoundForm() {
   editingRoundId = null;
 
+  document.getElementById("roundUser").value = "";
   document.getElementById("gameName").value = "";
   document.getElementById("stake").value = "";
   document.getElementById("result").value = "";
+  document.getElementById("won").value = "true";
 
   document.getElementById("saveRoundButton").textContent =
     "STATISTIK SPEICHERN";
 }
 
 // ==========================================
-// RUNDE LÖSCHEN
+// LÖSCHEN
 // ==========================================
 
 async function deleteRound(id) {
@@ -232,11 +240,12 @@ async function deleteRound(id) {
   if (error) return showMessage(error.message);
 
   showMessage("Statistik gelöscht!");
+
   await loadAdminData();
 }
 
 // ==========================================
-// ABMELDEN
+// LOGOUT
 // ==========================================
 
 async function adminLogout() {
