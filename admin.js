@@ -1,10 +1,8 @@
 
-/* ==========================================
-   KRAKESMP - OWNER ADMIN PANEL
-   ========================================== */
+"use strict";
 
 // ==========================================
-// SUPABASE VERBINDUNG
+// KRAKESMP OWNER PANEL V2
 // ==========================================
 
 const SUPABASE_URL =
@@ -13,36 +11,23 @@ const SUPABASE_URL =
 const SUPABASE_KEY =
   "sb_publishable_DVDRAKqYV92NtT1FcYYLLw_UzsR-fZu";
 
-if (!window.supabase) {
-  throw new Error("Supabase konnte nicht geladen werden!");
-}
+const OWNER_ID =
+  "cee3680c-3580-47c5-8c64-0277eac03800";
 
 const db = window.supabase.createClient(
   SUPABASE_URL,
   SUPABASE_KEY
 );
 
-// ==========================================
-// VARIABLEN
-// ==========================================
+const $ = id => document.getElementById(id);
 
-let editingRoundId = null;
-let adminVerified = false;
-let adminLoading = false;
-
-const OWNER_ID =
-  "cee3680c-3580-47c5-8c64-0277eac03800";
-
-// ==========================================
-// HILFSFUNKTIONEN
-// ==========================================
+let players = [];
+let rounds = [];
+let applications = [];
+let verified = false;
 
 const money = n =>
   Number(n || 0).toLocaleString("de-DE") + " Coins";
-
-function showMessage(message) {
-  alert(message);
-}
 
 function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({
@@ -54,558 +39,438 @@ function escapeHTML(value) {
   })[c]);
 }
 
-function setStatus(message) {
-  const status = document.getElementById("status");
+function randomCode() {
+  const chars =
+    "ABCDEFGHJKLMNPQRSTUVWXYZabcdefghijkmnopqrstuvwxyz23456789!@#$";
 
-  if (status) {
-    status.textContent = message;
-  }
-}
+  const bytes = new Uint8Array(24);
+  crypto.getRandomValues(bytes);
 
-function showLogin(message = "") {
-  adminVerified = false;
-
-  document.getElementById("loginPanel").style.display = "block";
-  document.getElementById("adminPanel").style.display = "none";
-
-  const error = document.getElementById("loginError");
-
-  if (error) {
-    error.textContent = message;
-  }
-}
-
-function showAdmin() {
-  adminVerified = true;
-
-  document.getElementById("loginPanel").style.display = "none";
-  document.getElementById("adminPanel").style.display = "block";
-
-  setStatus("OWNER AKTIV");
+  return Array.from(bytes, b => chars[b % chars.length]).join("");
 }
 
 // ==========================================
-// OWNER BERECHTIGUNG PRÜFEN
+// API
 // ==========================================
 
-async function verifyAdmin() {
-  const {
-    data: { user },
-    error: userError
-  } = await db.auth.getUser();
-
-  if (userError || !user) {
-    return false;
+async function api(action, values = {}) {
+  if (!verified) {
+    throw new Error("Owner nicht angemeldet.");
   }
 
-  // Zusätzliche Prüfung der bekannten Owner-ID
-  if (user.id !== OWNER_ID) {
-    return false;
-  }
+  const { data, error } = await db.functions.invoke("owner-api", {
+    body: { action, ...values }
+  });
 
-  // Serverseitige Owner-Prüfung
-  const { data, error } = await db.rpc("krake_is_admin");
+  if (error) throw error;
+  if (data?.error) throw new Error(data.error);
 
-  if (error) {
-    console.error("OWNER PRÜFUNG FEHLER:", error);
-    throw error;
-  }
-
-  return data === true;
+  return data;
 }
 
 // ==========================================
 // LOGIN
 // ==========================================
 
+$("loginButton").addEventListener("click", adminLogin);
+
 async function adminLogin() {
-  if (adminLoading) return;
-
-  adminLoading = true;
-
-  const button = document.getElementById("loginButton");
-
-  if (button) {
-    button.disabled = true;
-    button.textContent = "LOGIN WIRD GEPRÜFT...";
-  }
+  const button = $("loginButton");
+  button.disabled = true;
 
   try {
-    const email =
-      document.getElementById("email").value.trim();
-
-    const password =
-      document.getElementById("password").value;
-
-    if (!email || !password) {
-      return showLogin("Bitte E-Mail und Passwort eingeben!");
-    }
+    const email = $("email").value.trim();
+    const password = $("password").value;
 
     const { error } = await db.auth.signInWithPassword({
       email,
       password
     });
 
-    if (error) {
-      return showLogin(error.message);
-    }
+    if (error) throw error;
 
-    let allowed = false;
+    await verifyOwner();
 
-    try {
-      allowed = await verifyAdmin();
-    } catch (error) {
-      console.error("ADMIN RPC FEHLER:", error);
-      await db.auth.signOut();
-
-      return showLogin(
-        "Owner-Prüfung fehlgeschlagen. Bitte Datenbankfunktion krake_is_admin prüfen."
-      );
-    }
-
-    if (!allowed) {
-      await db.auth.signOut();
-
-      return showLogin("Kein Owner-Zugriff!");
-    }
-
-    showAdmin();
+    $("loginPanel").hidden = true;
+    $("adminPanel").hidden = false;
 
     await loadAdminData();
 
-    console.log("KRAKESMP OWNER PANEL AKTIV");
-
   } catch (error) {
-    console.error("LOGIN FEHLER:", error);
+    console.error(error);
 
-    showLogin("Ein Fehler ist beim Login aufgetreten.");
+    $("loginError").textContent = error.message;
+
+    await db.auth.signOut();
 
   } finally {
-    adminLoading = false;
-
-    if (button) {
-      button.disabled = false;
-      button.textContent = "👑 EINLOGGEN";
-    }
+    button.disabled = false;
   }
 }
 
-// ==========================================
-// BESTEHENDE ANMELDUNG PRÜFEN
-// ==========================================
+async function verifyOwner() {
+  const {
+    data: { user },
+    error
+  } = await db.auth.getUser();
 
-async function checkExistingLogin() {
-  showLogin();
-
-  try {
-    const allowed = await verifyAdmin();
-
-    if (!allowed) {
-      return;
-    }
-
-    showAdmin();
-
-    await loadAdminData();
-
-  } catch (error) {
-    console.error("SESSION PRÜFUNG FEHLER:", error);
-    showLogin("Owner-Zugriff konnte nicht geprüft werden.");
+  if (error || !user || user.id !== OWNER_ID) {
+    throw new Error("Kein Owner-Zugriff!");
   }
+
+  verified = true;
 }
 
 // ==========================================
-// ADMIN DATEN LADEN
+// DATEN LADEN
 // ==========================================
 
 async function loadAdminData() {
-  if (!adminVerified) {
-    return showMessage("Kein Owner-Zugriff!");
-  }
-
-  const playersContainer =
-    document.getElementById("players");
-
-  const roundContainer =
-    document.getElementById("roundList");
-
-  if (playersContainer) {
-    playersContainer.textContent = "Spieler werden geladen...";
-  }
-
-  if (roundContainer) {
-    roundContainer.textContent = "Statistiken werden geladen...";
-  }
-
   try {
-    const { data: players, error } = await db
-      .from("ks_players")
-      .select(
-        "id, username, total_profit, total_wins, total_losses, total_rounds"
+    const data = await api("list");
+
+    applications = data.applications || [];
+    players = data.players || [];
+    rounds = data.rounds || [];
+
+    $("playerCount").textContent = players.length;
+    $("applicationCount").textContent = applications.length;
+
+    $("totalTurnover").textContent = money(
+      rounds.reduce((sum, r) =>
+        sum + Number(r.stake || 0), 0
       )
-      .order("username");
-
-    if (error) throw error;
-
-    const { data: rounds, error: roundError } = await db
-      .from("ks_rounds")
-      .select("*")
-      .order("created_at", { ascending: false });
-
-    if (roundError) throw roundError;
-
-    const allPlayers = players || [];
-    const allRounds = rounds || [];
-
-    document.getElementById("playerCount").textContent =
-      allPlayers.length;
-
-    const totalTurnover = allRounds.reduce(
-      (sum, r) => sum + Number(r.stake || 0),
-      0
     );
 
-    document.getElementById("totalTurnover").textContent =
-      money(totalTurnover);
+    renderApplications();
+    renderPlayers();
+    renderRounds();
+    renderPlayerSelect();
 
-    // SPIELER AUSWÄHLEN
+  } catch (error) {
+    console.error(error);
+    alert("Ladefehler: " + error.message);
+  }
+}
 
-    const select = document.getElementById("roundUser");
+// ==========================================
+// ACCOUNT-ANTRÄGE
+// ==========================================
 
-    select.innerHTML = `
-      <option value="">Spieler auswählen...</option>
-      ${allPlayers.map(p => `
+function renderApplications() {
+  $("applications").innerHTML = applications.map(a => `
+    <div class="player">
+      <b>${escapeHTML(a.username)}</b>
+      <p>Status: OFFEN</p>
+      <p class="small">
+        ${new Date(a.created_at).toLocaleString("de-DE")}
+      </p>
+
+      <button data-action="approve" data-id="${escapeHTML(a.id)}">
+        FREISCHALTEN + CODE ERSTELLEN
+      </button>
+
+      <button class="danger"
+        data-action="reject" data-id="${escapeHTML(a.id)}">
+        ABLEHNEN
+      </button>
+    </div>
+  `).join("") || "Keine offenen Anträge.";
+}
+
+$("applications").addEventListener("click", async event => {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+
+  const id = button.dataset.id;
+  const action = button.dataset.action;
+
+  try {
+    if (action === "approve") {
+      const application = applications.find(a => a.id === id);
+      if (!application) return;
+
+      if (!confirm(
+        "Account für " + application.username +
+        " freischalten und Sicherheitscode erstellen?"
+      )) return;
+
+      const code = randomCode();
+
+      await api("approve", { id, code });
+
+      alert(
+        "ACCOUNT ERSTELLT!\n\nBenutzername: " +
+        application.username +
+        "\n\nSICHERHEITSCODE:\n" + code +
+        "\n\nDiesen Code jetzt privat an den Spieler weitergeben. Er wird nicht erneut angezeigt."
+      );
+    }
+
+    if (action === "reject") {
+      if (!confirm("Antrag wirklich ablehnen?")) return;
+
+      await api("reject", { id });
+    }
+
+    await loadAdminData();
+
+  } catch (error) {
+    alert("Fehler: " + error.message);
+  }
+});
+
+// ==========================================
+// SPIELER
+// ==========================================
+
+function renderPlayers() {
+  $("players").innerHTML = players.map(p => `
+    <div class="player">
+      <b>👤 ${escapeHTML(p.username)}</b>
+
+      <p>Profit: ${money(p.total_profit)}</p>
+      <p>Runden: ${Number(p.total_rounds || 0)}</p>
+
+      <p class="${p.is_banned ? "red" : "green"}">
+        ${p.is_banned ? "GEBANNT" : "AKTIV"}
+      </p>
+
+      <button data-action="code" data-id="${escapeHTML(p.id)}">
+        NEUEN SICHERHEITSCODE
+      </button>
+
+      <button data-action="rename" data-id="${escapeHTML(p.id)}">
+        NAME ÄNDERN
+      </button>
+
+      ${
+        p.is_banned
+        ? `<button data-action="unban" data-id="${escapeHTML(p.id)}">ENTBANNEN</button>`
+        : `<button class="danger" data-action="ban" data-id="${escapeHTML(p.id)}">BANNEN</button>`
+      }
+
+      <button class="danger"
+        data-action="delete" data-id="${escapeHTML(p.id)}">
+        ACCOUNT LÖSCHEN
+      </button>
+    </div>
+  `).join("") || "Keine Spieler vorhanden.";
+}
+
+$("players").addEventListener("click", async event => {
+  const button = event.target.closest("button[data-action]");
+  if (!button) return;
+
+  const id = button.dataset.id;
+  const action = button.dataset.action;
+  const player = players.find(p => p.id === id);
+
+  if (!player) return;
+
+  try {
+    if (action === "code") {
+      if (!confirm(
+        "Neuen Sicherheitscode für " + player.username + " erstellen?"
+      )) return;
+
+      const code = randomCode();
+
+      await api("set_code", { id, code });
+
+      alert(
+        "NEUER SICHERHEITSCODE\n\n" +
+        "Spieler: " + player.username +
+        "\n\nCode:\n" + code +
+        "\n\nBitte privat weitergeben!"
+      );
+    }
+
+    if (action === "rename") {
+      const username = prompt(
+        "Neuer Benutzername:",
+        player.username
+      );
+
+      if (!username) return;
+
+      await api("rename", { id, username });
+    }
+
+    if (action === "ban") {
+      const reason = prompt("Banngrund:", "Regelverstoß");
+
+      if (reason === null) return;
+
+      await api("ban", { id, reason });
+    }
+
+    if (action === "unban") {
+      if (!confirm(player.username + " entbannen?")) return;
+
+      await api("unban", { id });
+    }
+
+    if (action === "delete") {
+      if (!confirm(
+        "ACHTUNG!\n\nAccount " + player.username +
+        " und sämtliche zugehörigen Spielrunden löschen?"
+      )) return;
+
+      await api("delete", { id });
+    }
+
+    await loadAdminData();
+
+  } catch (error) {
+    alert("Fehler: " + error.message);
+  }
+});
+
+// ==========================================
+// SPIELER AUSWÄHLEN
+// ==========================================
+
+function renderPlayerSelect() {
+  $("roundUser").innerHTML = `
+    <option value="">Spieler auswählen...</option>
+    ${players
+      .filter(p => !p.is_banned && p.status === "active")
+      .map(p => `
         <option value="${escapeHTML(p.id)}">
           ${escapeHTML(p.username)}
         </option>
       `).join("")}
-    `;
-
-    // SPIELERVERWALTUNG
-
-    playersContainer.innerHTML =
-      allPlayers.map(p => {
-        const own = allRounds.filter(
-          r => r.user_id === p.id
-        );
-
-        const wins =
-          own.filter(r => r.won === true).length;
-
-        const losses =
-          own.filter(r => r.won === false).length;
-
-        const profit = own.reduce(
-          (sum, r) => sum + Number(r.result || 0),
-          0
-        );
-
-        const turnover = own.reduce(
-          (sum, r) => sum + Number(r.stake || 0),
-          0
-        );
-
-        const rate = own.length
-          ? (wins / own.length * 100).toFixed(1)
-          : "0.0";
-
-        return `
-          <div class="player">
-
-            <b>👤 ${escapeHTML(p.username)}</b>
-
-            <p>Runden: ${own.length}</p>
-
-            <p>Siege: ${wins} | Niederlagen: ${losses}</p>
-
-            <p>Winrate: ${rate}%</p>
-
-            <p>Profit: ${money(profit)}</p>
-
-            <p>Umsatz: ${money(turnover)}</p>
-
-          </div>
-        `;
-      }).join("") || "Keine Spieler vorhanden.";
-
-    // STATISTIKVERLAUF
-
-    roundContainer.innerHTML =
-      allRounds.slice(0, 50).map(r => `
-        <div class="player">
-
-          <b>${escapeHTML(r.game_name)}</b>
-
-          <p>Spieler-ID: ${escapeHTML(r.user_id)}</p>
-
-          <p>Einsatz: ${money(r.stake)}</p>
-
-          <p>Profit: ${money(r.result)}</p>
-
-          <p>${r.won ? "GEWONNEN" : "VERLOREN"}</p>
-
-          <p class="small">
-            ${r.created_at
-              ? new Date(r.created_at).toLocaleString("de-DE")
-              : ""}
-          </p>
-
-          <button
-            type="button"
-            data-action="edit"
-            data-id="${escapeHTML(r.id)}">
-            BEARBEITEN
-          </button>
-
-          <button
-            class="danger"
-            type="button"
-            data-action="delete"
-            data-id="${escapeHTML(r.id)}">
-            LÖSCHEN
-          </button>
-
-        </div>
-      `).join("") || "Noch keine Einträge.";
-
-    console.log("ADMIN DATEN GELADEN!");
-
-  } catch (error) {
-    console.error("ADMIN DATEN FEHLER:", error);
-
-    showMessage(
-      "Daten konnten nicht geladen werden: " + error.message
-    );
-  }
+  `;
 }
 
 // ==========================================
-// STATISTIK SPEICHERN
+// RUNDE SPEICHERN
 // ==========================================
 
-async function saveRound() {
-  if (!adminVerified) {
-    return showMessage("Kein Owner-Zugriff!");
-  }
-
-  const userId =
-    document.getElementById("roundUser").value;
-
-  const gameName =
-    document.getElementById("gameName").value.trim();
-
-  const stakeText =
-    document.getElementById("stake").value;
-
-  const resultText =
-    document.getElementById("result").value;
+$("saveRoundButton").addEventListener("click", async () => {
+  const user_id = $("roundUser").value;
+  const game_name = $("gameName").value.trim();
+  const stakeText = $("stake").value;
+  const resultText = $("result").value;
 
   const stake = Number(stakeText);
   const result = Number(resultText);
-
-  const won =
-    document.getElementById("won").value === "true";
+  const won = $("won").value === "true";
 
   if (
-    !userId ||
-    !gameName ||
-    gameName.length > 100 ||
-    stakeText === "" ||
-    resultText === "" ||
+    !user_id ||
+    !game_name ||
     !Number.isSafeInteger(stake) ||
     stake < 0 ||
+    resultText === "" ||
     !Number.isSafeInteger(result)
   ) {
-    return showMessage("Bitte gültige Werte eingeben!");
+    return alert("Bitte gültige Daten eingeben.");
   }
 
   try {
-    let response;
-
-    if (editingRoundId !== null) {
-      response = await db
-        .from("ks_rounds")
-        .update({
-          user_id: userId,
-          game_name: gameName,
-          stake,
-          result,
-          won
-        })
-        .eq("id", editingRoundId);
-
-    } else {
-      response = await db
-        .from("ks_rounds")
-        .insert({
-          user_id: userId,
-          game_name: gameName,
-          stake,
-          result,
-          won
-        });
-    }
-
-    if (response.error) {
-      throw response.error;
-    }
-
-    resetRoundForm();
-
-    showMessage("Statistik erfolgreich gespeichert!");
-
-    await loadAdminData();
-
-  } catch (error) {
-    console.error("SPEICHERFEHLER:", error);
-    showMessage("Speichern fehlgeschlagen: " + error.message);
-  }
-}
-
-// ==========================================
-// STATISTIK BEARBEITEN
-// ==========================================
-
-async function editRound(id) {
-  if (!adminVerified) {
-    return showMessage("Kein Owner-Zugriff!");
-  }
-
-  try {
-    const { data, error } = await db
-      .from("ks_rounds")
-      .select("*")
-      .eq("id", id)
-      .single();
-
-    if (error) throw error;
-
-    editingRoundId = id;
-
-    document.getElementById("roundUser").value =
-      data.user_id;
-
-    document.getElementById("gameName").value =
-      data.game_name;
-
-    document.getElementById("stake").value =
-      data.stake;
-
-    document.getElementById("result").value =
-      data.result;
-
-    document.getElementById("won").value =
-      String(data.won);
-
-    document.getElementById("saveRoundButton").textContent =
-      "ÄNDERUNGEN SPEICHERN";
-
-    window.scrollTo({
-      top: 0,
-      behavior: "smooth"
+    await api("save_round", {
+      user_id,
+      game_name,
+      stake,
+      result,
+      won
     });
 
-  } catch (error) {
-    console.error("BEARBEITUNGSFEHLER:", error);
-    showMessage(error.message);
-  }
-}
+    $("gameName").value = "";
+    $("stake").value = "";
+    $("result").value = "";
 
-// ==========================================
-// STATISTIK LÖSCHEN
-// ==========================================
-
-async function deleteRound(id) {
-  if (!adminVerified) {
-    return showMessage("Kein Owner-Zugriff!");
-  }
-
-  if (!confirm("Statistik wirklich löschen?")) {
-    return;
-  }
-
-  try {
-    const { error } = await db
-      .from("ks_rounds")
-      .delete()
-      .eq("id", id);
-
-    if (error) throw error;
-
-    showMessage("Statistik gelöscht!");
+    alert("Spielrunde gespeichert!");
 
     await loadAdminData();
 
   } catch (error) {
-    console.error("LÖSCHFEHLER:", error);
-    showMessage("Löschen fehlgeschlagen: " + error.message);
+    alert("Fehler: " + error.message);
   }
+});
+
+// ==========================================
+// SPIELVERLAUF
+// ==========================================
+
+function renderRounds() {
+  $("roundList").innerHTML = rounds.slice(0, 50).map(r => `
+    <div class="player">
+      <b>${escapeHTML(r.game_name)}</b>
+      <p>Spieler-ID: ${escapeHTML(r.user_id)}</p>
+      <p>Einsatz: ${money(r.stake)}</p>
+      <p>Ergebnis: ${money(r.result)}</p>
+      <p>${r.won ? "GEWONNEN" : "VERLOREN"}</p>
+
+      <button class="danger"
+        data-delete-round="${escapeHTML(r.id)}">
+        RUNDE LÖSCHEN
+      </button>
+    </div>
+  `).join("") || "Keine Runden.";
 }
 
-// ==========================================
-// STATISTIK BUTTONS
-// ==========================================
+$("roundList").addEventListener("click", async event => {
+  const button = event.target.closest("[data-delete-round]");
+  if (!button) return;
 
-document.getElementById("roundList")
-  ?.addEventListener("click", event => {
-    const button = event.target.closest("button[data-action]");
+  const id = button.dataset.deleteRound;
 
-    if (!button) return;
+  if (!confirm("Diese Runde wirklich löschen?")) return;
 
-    const id = button.dataset.id;
-
-    if (button.dataset.action === "edit") {
-      editRound(id);
-    }
-
-    if (button.dataset.action === "delete") {
-      deleteRound(id);
-    }
-  });
+  try {
+    await api("delete_round", { id });
+    await loadAdminData();
+  } catch (error) {
+    alert(error.message);
+  }
+});
 
 // ==========================================
-// FORMULAR ZURÜCKSETZEN
+// AKTUALISIEREN
 // ==========================================
 
-function resetRoundForm() {
-  editingRoundId = null;
-
-  document.getElementById("roundUser").value = "";
-  document.getElementById("gameName").value = "";
-  document.getElementById("stake").value = "";
-  document.getElementById("result").value = "";
-  document.getElementById("won").value = "true";
-
-  document.getElementById("saveRoundButton").textContent =
-    "STATISTIK SPEICHERN";
-}
+$("refreshButton").addEventListener("click", loadAdminData);
 
 // ==========================================
 // LOGOUT
 // ==========================================
 
-async function adminLogout() {
-  try {
-    const { error } = await db.auth.signOut();
-
-    if (error) throw error;
-
-    adminVerified = false;
-
-    location.href = "index.html";
-
-  } catch (error) {
-    console.error("LOGOUT FEHLER:", error);
-    showMessage(error.message);
-  }
-}
+$("logoutButton").addEventListener("click", async () => {
+  verified = false;
+  await db.auth.signOut();
+  location.href = "index.html";
+});
 
 // ==========================================
 // START
 // ==========================================
 
-document.addEventListener("DOMContentLoaded", () => {
-  console.log("KRAKESMP OWNER PANEL STARTET...");
+async function start() {
+  $("adminPanel").hidden = true;
+  $("loginPanel").hidden = false;
 
-  checkExistingLogin();
-});
+  try {
+    const {
+      data: { session }
+    } = await db.auth.getSession();
+
+    if (!session) return;
+
+    await verifyOwner();
+
+    $("loginPanel").hidden = true;
+    $("adminPanel").hidden = false;
+
+    await loadAdminData();
+
+  } catch (error) {
+    console.error("OWNER SESSION:", error);
+    verified = false;
+    await db.auth.signOut();
+  }
+}
+
+start();
