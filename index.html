@@ -2,124 +2,84 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>KRAKESMP | Gambler Leaderboard</title>
-  <link rel="stylesheet" href="style.css">
-  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>KRAKESMP | Leaderboard</title>
+<link rel="stylesheet" href="style.css">
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
+
 <body>
 
 <header>
-  <h1>🎰 KRAKESMP</h1>
-  <p>GLOBAL GAMBLER LEADERBOARD</p>
-  <nav>
-    <a href="#leaderboard">LEADERBOARD</a>
-    <a href="#account">ACCOUNT</a>
-    <a href="#prizes">PRIZES</a>
-  </nav>
+  <h1>👑 KRAKESMP</h1>
+  <p>OFFICIAL PLAYER LEADERBOARD</p>
 </header>
 
 <main>
 
-  <section class="card" id="leaderboard">
-    <h2>🏆 GLOBAL LEADERBOARD</h2>
+<section class="card">
+  <h2>🏆 LEADERBOARD</h2>
+  <div id="ranking">Rangliste wird geladen...</div>
+</section>
 
-    <div class="stats-grid">
-      <div class="stat">
-        <span>SPIELER</span>
-        <strong id="playerCount">0</strong>
-      </div>
-      <div class="stat">
-        <span>SPIELRUNDEN</span>
-        <strong id="roundCount">0</strong>
-      </div>
-    </div>
+<section class="card" id="loginPanel">
+  <h2>🔐 ACCOUNT</h2>
 
-    <div class="table-wrap">
-      <table>
-        <thead>
-          <tr>
-            <th>RANG</th>
-            <th>SPIELER</th>
-            <th>PROFIT</th>
-            <th>WINRATE</th>
-            <th>RUNDEN</th>
-          </tr>
-        </thead>
-        <tbody id="leaderboardBody">
-          <tr><td colspan="5">Lade Rangliste...</td></tr>
-        </tbody>
-      </table>
-    </div>
-  </section>
+  <input id="username" placeholder="Benutzername (nur Registrierung)">
+  <input id="email" type="email" placeholder="E-Mail">
+  <input id="password" type="password" placeholder="Passwort">
 
-  <section class="card" id="account">
-    <h2>🔐 PLAYER ACCOUNT</h2>
+  <button onclick="register()">ACCOUNT ERSTELLEN</button>
+  <button onclick="login()">EINLOGGEN</button>
+</section>
 
-    <div id="loginPanel">
-      <input id="email" type="email" placeholder="E-Mail">
-      <input id="password" type="password" placeholder="Passwort">
-      <button onclick="login()">LOGIN</button>
-      <p class="small">
-        Accounts werden ausschließlich vom Owner erstellt.
-      </p>
-    </div>
+<section class="card" id="dashboard" style="display:none">
+  <h2>👤 MEIN ACCOUNT</h2>
 
-    <div id="dashboard" class="hidden">
-      <h3>Willkommen, <span id="profileName"></span></h3>
+  <p>Spieler: <b id="profileName"></b></p>
+  <p>Guthaben: <b id="balance">0 Coins</b></p>
 
-      <div class="stats-grid">
-        <div class="stat">
-          <span>PROFIT</span>
-          <strong id="myProfit">0</strong>
-        </div>
-        <div class="stat">
-          <span>WINRATE</span>
-          <strong id="myWinrate">0%</strong>
-        </div>
-        <div class="stat">
-          <span>VERLUST</span>
-          <strong id="myLoss">0</strong>
-        </div>
-        <div class="stat">
-          <span>SPIELRUNDEN</span>
-          <strong id="myRounds">0</strong>
-        </div>
-        <div class="stat">
-          <span>UMSATZ</span>
-          <strong id="myTurnover">0</strong>
-        </div>
-        <div class="stat">
-          <span>GUTHABEN</span>
-          <strong id="myBalance">0</strong>
-        </div>
-      </div>
+  <hr>
 
-      <h3>Mein Rang</h3>
-      <div id="myRank" class="rank">UNRANKED</div>
+  <h3>📊 MEINE STATISTIKEN</h3>
 
-      <h3>Meine letzten Spielrunden</h3>
-      <div id="myRoundsList">Keine Spielrunden.</div>
+  <div class="stats">
+    <div class="stat">Runden<b id="myRounds">0</b></div>
+    <div class="stat">Siege<b id="myWins">0</b></div>
+    <div class="stat">Niederlagen<b id="myLosses">0</b></div>
+    <div class="stat">Winrate<b id="myWinrate">0%</b></div>
+    <div class="stat">Gesamteinsätze<b id="myTotalStake">0</b></div>
+    <div class="stat">Profit<b id="myProfit">0</b></div>
+    <div class="stat">Verlust<b id="myLoss">0</b></div>
+  </div>
 
-      <button class="secondary" onclick="logout()">LOGOUT</button>
-    </div>
-  </section>
+  <hr>
 
-  <section class="card" id="prizes">
-    <h2>🎁 PRIZES</h2>
-    <div id="prizeList">Lade Preise...</div>
-  </section>
+  <h3>📜 LETZTE SPIELRUNGEN</h3>
+  <div id="myRoundsList">Noch keine Statistiken.</div>
 
-  <div id="message" class="message"></div>
+  <hr>
+
+  <button id="adminLink"
+    style="display:none"
+    onclick="location.href='admin.html'">
+    👑 OWNER ADMIN MENÜ
+  </button>
+
+  <button class="secondary" onclick="logout()">
+    ABMELDEN
+  </button>
+</section>
 
 </main>
 
 <footer>
-  KRAKESMP GAMBLING · BLACK & GOLD
+  KRAKESMP · OFFICIAL STATISTICS
 </footer>
 
 <script src="app.js"></script>
-<script src="games.js"></script>
+
 </body>
 </html>
+
