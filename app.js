@@ -3,14 +3,18 @@
 // KRAKESMP - ACCOUNT & STATISTICS SYSTEM
 // ==========================================
 
+// ==========================================
 // SUPABASE VERBINDUNG
-const SUPABASE_URL = "https://zrijikvllmotgsixcguc.supabase.co";
+// ==========================================
 
-const SUPABASE_KEY = "DEIN_VOLLSTAENDIGER_PUBLISHABLE_KEY";
+const SUPABASE_URL =
+  "https://zrijikvllmotgsixcguc.supabase.co";
 
-// Supabase Client erstellen
+const SUPABASE_KEY =
+  "sb_publishable_DVDRAKqYV92NtT1FcYYLLw_UzsR-fZu";
+
 if (!window.supabase) {
-  throw new Error("Supabase wurde nicht geladen! Bitte index.html prüfen.");
+  throw new Error("Supabase konnte nicht geladen werden!");
 }
 
 const db = window.supabase.createClient(
@@ -18,11 +22,17 @@ const db = window.supabase.createClient(
   SUPABASE_KEY
 );
 
+// ==========================================
+// GLOBALE VARIABLEN
+// ==========================================
+
 let currentUser = null;
 let currentProfile = null;
 let isAdmin = false;
+let loadingAccount = false;
 
-const OWNER_ID = "cee3680c-3580-47c5-8c64-0277eac03800";
+const OWNER_ID =
+  "cee3680c-3580-47c5-8c64-0277eac03800";
 
 // ==========================================
 // HILFSFUNKTIONEN
@@ -45,28 +55,75 @@ function escapeHTML(value) {
   })[c]);
 }
 
+function setText(id, value) {
+  const element = document.getElementById(id);
+
+  if (element) {
+    element.textContent = value;
+  }
+}
+
+// ==========================================
+// SUPABASE VERBINDUNG TESTEN
+// ==========================================
+
+async function testSupabase() {
+  console.log("KRAKESMP: Prüfe Supabase...");
+
+  const { data, error } = await db
+    .from("ks_players")
+    .select("id")
+    .limit(1);
+
+  if (error) {
+    console.error("SUPABASE FEHLER:", error);
+
+    const ranking = document.getElementById("ranking");
+
+    if (ranking) {
+      ranking.textContent =
+        "Datenbankfehler: " + error.message;
+    }
+
+    return false;
+  }
+
+  console.log("Supabase erfolgreich verbunden!", data);
+
+  return true;
+}
+
 // ==========================================
 // REGISTRIERUNG
 // ==========================================
 
 async function register() {
-  const username = document.getElementById("username")?.value.trim();
-  const email = document.getElementById("email")?.value.trim();
-  const password = document.getElementById("password")?.value;
+  const username =
+    document.getElementById("username")?.value.trim();
+
+  const email =
+    document.getElementById("email")?.value.trim();
+
+  const password =
+    document.getElementById("password")?.value;
 
   if (!username || !email || !password) {
     return showMessage("Bitte alle Felder ausfüllen!");
   }
 
   if (username.length < 3 || username.length > 20) {
-    return showMessage("Benutzername muss 3-20 Zeichen haben!");
+    return showMessage(
+      "Benutzername muss 3-20 Zeichen haben!"
+    );
   }
 
   if (password.length < 8) {
-    return showMessage("Passwort muss mindestens 8 Zeichen haben!");
+    return showMessage(
+      "Passwort muss mindestens 8 Zeichen haben!"
+    );
   }
 
-  const { error } = await db.auth.signUp({
+  const { data, error } = await db.auth.signUp({
     email,
     password,
     options: {
@@ -75,6 +132,7 @@ async function register() {
   });
 
   if (error) {
+    console.error("REGISTRIERUNGSFEHLER:", error);
     return showMessage(error.message);
   }
 
@@ -82,7 +140,9 @@ async function register() {
     "Registrierung erfolgreich! Bitte bestätige gegebenenfalls deine E-Mail."
   );
 
-  await loadAccount();
+  if (data.session) {
+    await loadAccount();
+  }
 }
 
 // ==========================================
@@ -90,11 +150,16 @@ async function register() {
 // ==========================================
 
 async function login() {
-  const email = document.getElementById("email")?.value.trim();
-  const password = document.getElementById("password")?.value;
+  const email =
+    document.getElementById("email")?.value.trim();
+
+  const password =
+    document.getElementById("password")?.value;
 
   if (!email || !password) {
-    return showMessage("Bitte E-Mail und Passwort eingeben!");
+    return showMessage(
+      "Bitte E-Mail und Passwort eingeben!"
+    );
   }
 
   const { error } = await db.auth.signInWithPassword({
@@ -103,6 +168,7 @@ async function login() {
   });
 
   if (error) {
+    console.error("LOGIN FEHLER:", error);
     return showMessage(error.message);
   }
 
@@ -127,6 +193,8 @@ async function logout() {
   isAdmin = false;
 
   updateInterface();
+
+  showMessage("Du wurdest abgemeldet.");
 }
 
 // ==========================================
@@ -134,44 +202,67 @@ async function logout() {
 // ==========================================
 
 async function loadAccount() {
-  const {
-    data: { user },
-    error: authError
-  } = await db.auth.getUser();
+  if (loadingAccount) return;
 
-  if (authError || !user) {
-    currentUser = null;
-    currentProfile = null;
-    isAdmin = false;
+  loadingAccount = true;
+
+  try {
+    const {
+      data: { user },
+      error: authError
+    } = await db.auth.getUser();
+
+    if (authError || !user) {
+      currentUser = null;
+      currentProfile = null;
+      isAdmin = false;
+
+      updateInterface();
+      return;
+    }
+
+    currentUser = user;
+
+    const { data: profile, error } = await db
+      .from("ks_players")
+      .select("*")
+      .eq("id", user.id)
+      .maybeSingle();
+
+    if (error) {
+      console.error("PROFILFEHLER:", error);
+      showMessage("Profilfehler: " + error.message);
+      return;
+    }
+
+    if (!profile) {
+      currentProfile = null;
+      isAdmin = user.id === OWNER_ID;
+
+      updateInterface();
+
+      showMessage(
+        "Spielerprofil nicht gefunden. Bitte Owner kontaktieren."
+      );
+
+      return;
+    }
+
+    currentProfile = profile;
+    isAdmin = user.id === OWNER_ID;
+
     updateInterface();
-    return;
+
+    await Promise.all([
+      loadMyStatistics(),
+      loadMyRounds()
+    ]);
+
+  } catch (error) {
+    console.error("ACCOUNT FEHLER:", error);
+  } finally {
+    loadingAccount = false;
   }
-
-  currentUser = user;
-
-  const { data: profile, error } = await db
-    .from("ks_players")
-    .select("*")
-    .eq("id", user.id)
-    .maybeSingle();
-
-  if (error) {
-    showMessage("Profilfehler: " + error.message);
-    return;
-  }
-
-  if (!profile) {
-    showMessage("Spielerprofil nicht gefunden. Bitte Owner kontaktieren.");
-    return;
-  }
-
-  currentProfile = profile;
-  isAdmin = user.id === OWNER_ID;
-
-  updateInterface();
-
-  await loadMyStatistics();
-  await loadMyRounds();
 }
 
 // ==========================================
@@ -179,27 +270,38 @@ async function loadAccount() {
 // ==========================================
 
 function updateInterface() {
-  const loginPanel = document.getElementById("loginPanel");
-  const dashboard = document.getElementById("dashboard");
+  const loginPanel =
+    document.getElementById("loginPanel");
+
+  const dashboard =
+    document.getElementById("dashboard");
 
   if (loginPanel) {
-    loginPanel.style.display = currentUser ? "none" : "block";
+    loginPanel.style.display =
+      currentUser ? "none" : "block";
   }
 
   if (dashboard) {
-    dashboard.style.display = currentUser ? "block" : "none";
+    dashboard.style.display =
+      currentUser ? "block" : "none";
   }
 
-  const name = document.getElementById("profileName");
+  setText(
+    "profileName",
+    currentProfile?.username || ""
+  );
 
-  if (name && currentProfile) {
-    name.textContent = currentProfile.username;
-  }
+  setText(
+    "balance",
+    money(currentProfile?.balance || 0)
+  );
 
-  const adminButton = document.getElementById("adminLink");
+  const adminButton =
+    document.getElementById("adminLink");
 
   if (adminButton) {
-    adminButton.style.display = isAdmin ? "block" : "none";
+    adminButton.style.display =
+      isAdmin ? "block" : "none";
   }
 }
 
@@ -216,40 +318,46 @@ async function loadMyStatistics() {
     .eq("user_id", currentUser.id);
 
   if (error) {
-    console.error("Statistikfehler:", error.message);
+    console.error("STATISTIKFEHLER:", error);
     return;
   }
 
   const rounds = data || [];
 
-  const wins = rounds.filter(r => r.won === true).length;
-  const losses = rounds.filter(r => r.won === false).length;
+  const wins =
+    rounds.filter(r => r.won === true).length;
+
+  const losses =
+    rounds.filter(r => r.won === false).length;
 
   const winrate = rounds.length
     ? wins / rounds.length * 100
     : 0;
 
   const totalStake = rounds.reduce(
-    (sum, r) => sum + Number(r.stake || 0), 0
+    (sum, r) => sum + Number(r.stake || 0),
+    0
   );
 
   const totalProfit = rounds.reduce(
-    (sum, r) => sum + Number(r.result || 0), 0
+    (sum, r) => sum + Number(r.result || 0),
+    0
   );
 
-  const values = {
-    myRounds: rounds.length,
-    myWins: wins,
-    myLosses: losses,
-    myWinrate: winrate.toFixed(1) + "%",
-    myTotalStake: money(totalStake),
-    myProfit: money(totalProfit)
-  };
+  const totalLoss = rounds
+    .filter(r => Number(r.result || 0) < 0)
+    .reduce(
+      (sum, r) => sum + Math.abs(Number(r.result || 0)),
+      0
+    );
 
-  for (const [id, value] of Object.entries(values)) {
-    const element = document.getElementById(id);
-    if (element) element.textContent = value;
-  }
+  setText("myRounds", rounds.length);
+  setText("myWins", wins);
+  setText("myLosses", losses);
+  setText("myWinrate", winrate.toFixed(1) + "%");
+  setText("myTotalStake", money(totalStake));
+  setText("myProfit", money(totalProfit));
+  setText("myLoss", money(totalLoss));
 }
 
 // ==========================================
@@ -259,20 +367,25 @@ async function loadMyStatistics() {
 async function loadMyRounds() {
   if (!currentUser) return;
 
-  const container = document.getElementById("myRoundsList");
+  const container =
+    document.getElementById("myRoundsList");
 
   if (!container) return;
 
   const { data, error } = await db
     .from("ks_rounds")
-    .select("game_name, stake, result, won, created_at")
+    .select(
+      "game_name, stake, result, won, created_at"
+    )
     .eq("user_id", currentUser.id)
     .order("created_at", { ascending: false });
 
   if (error) {
+    console.error("SPIELHISTORIE FEHLER:", error);
+
     container.textContent =
       "Spielhistorie konnte nicht geladen werden.";
-    console.error(error);
+
     return;
   }
 
@@ -281,13 +394,19 @@ async function loadMyRounds() {
     .map(round => `
       <div class="player">
         <b>${escapeHTML(round.game_name)}</b>
+
         <p>Einsatz: ${money(round.stake)}</p>
+
         <p>Ergebnis: ${money(round.result)}</p>
+
         <p class="${round.won ? "green" : "red"}">
           ${round.won ? "GEWONNEN" : "VERLOREN"}
         </p>
+
         <span class="small">
-          ${new Date(round.created_at).toLocaleString("de-DE")}
+          ${round.created_at
+            ? new Date(round.created_at).toLocaleString("de-DE")
+            : ""}
         </span>
       </div>
     `).join("") || "Noch keine Statistiken vorhanden.";
@@ -298,51 +417,92 @@ async function loadMyRounds() {
 // ==========================================
 
 async function loadLeaderboard() {
-  const container = document.getElementById("ranking");
+  const container =
+    document.getElementById("ranking");
 
   if (!container) return;
 
-  container.textContent = "Rangliste wird geladen...";
+  container.textContent =
+    "🏆 Rangliste wird geladen...";
 
-  const { data, error } = await db
-    .from("ks_players")
-    .select("id, username, total_profit, total_wins, total_losses, total_rounds")
-    .order("total_profit", { ascending: false });
+  try {
+    const { data, error } = await db
+      .from("ks_players")
+      .select(
+        "id, username, total_profit, total_wins, total_losses, total_rounds"
+      )
+      .order("total_profit", {
+        ascending: false
+      });
 
-  if (error) {
-    container.textContent =
-      "Rangliste konnte nicht geladen werden: " + error.message;
+    if (error) {
+      console.error("RANGLISTENFEHLER:", error);
 
-    console.error("Ranglistenfehler:", error);
-    return;
-  }
+      container.textContent =
+        "Rangliste konnte nicht geladen werden: " +
+        error.message;
 
-  container.innerHTML = (data || []).map((p, i) => {
-    const wins = Number(p.total_wins || 0);
-    const losses = Number(p.total_losses || 0);
-    const total = wins + losses;
+      return;
+    }
 
-    const rate = total
-      ? (wins / total * 100).toFixed(1)
-      : "0.0";
+    if (!data || data.length === 0) {
+      container.textContent =
+        "Noch keine Spieler vorhanden.";
 
-    return `
-      <div class="player">
-        <div class="row">
-          <b>
-            ${["🥇", "🥈", "🥉"][i] || "🏅"}
-            ${escapeHTML(p.username)}
-          </b>
-          <b>${i + 1}. Platz</b>
+      return;
+    }
+
+    container.innerHTML = data.map((p, i) => {
+      const wins = Number(p.total_wins || 0);
+      const losses = Number(p.total_losses || 0);
+
+      const total = wins + losses;
+
+      const rate = total
+        ? (wins / total * 100).toFixed(1)
+        : "0.0";
+
+      return `
+        <div class="player">
+
+          <div class="row">
+            <b>
+              ${["🥇", "🥈", "🥉"][i] || "🏅"}
+              ${escapeHTML(p.username)}
+            </b>
+
+            <b>${i + 1}. Platz</b>
+          </div>
+
+          <p>Profit: ${money(p.total_profit)}</p>
+
+          <p>Winrate: ${rate}%</p>
+
+          <p>
+            Siege: ${wins}
+            ·
+            Niederlagen: ${losses}
+          </p>
+
+          <p>
+            Runden: ${Number(p.total_rounds || 0)}
+          </p>
+
         </div>
+      `;
+    }).join("");
 
-        <p>Profit: ${money(p.total_profit)}</p>
-        <p>Winrate: ${rate}%</p>
-        <p>Siege: ${wins} · Niederlagen: ${losses}</p>
-        <p>Runden: ${Number(p.total_rounds || 0)}</p>
-      </div>
-    `;
-  }).join("") || "Noch keine Spieler vorhanden.";
+    console.log(
+      "RANGLISTE ERFOLGREICH GELADEN:",
+      data
+    );
+
+  } catch (error) {
+    console.error("RANGLISTEN AUSNAHME:", error);
+
+    container.textContent =
+      "Unerwarteter Fehler beim Laden der Rangliste.";
+  }
 }
 
 // ==========================================
@@ -350,14 +510,22 @@ async function loadLeaderboard() {
 // ==========================================
 
 db.auth.onAuthStateChange((event) => {
-  if (event === "SIGNED_IN" || event === "TOKEN_REFRESHED") {
-    setTimeout(() => loadAccount(), 0);
+  console.log("AUTH EVENT:", event);
+
+  if (
+    event === "SIGNED_IN" ||
+    event === "TOKEN_REFRESHED"
+  ) {
+    setTimeout(() => {
+      loadAccount();
+    }, 0);
   }
 
   if (event === "SIGNED_OUT") {
     currentUser = null;
     currentProfile = null;
     isAdmin = false;
+
     updateInterface();
   }
 });
@@ -367,8 +535,16 @@ db.auth.onAuthStateChange((event) => {
 // ==========================================
 
 async function start() {
+  console.log("KRAKESMP STARTET...");
+
+  const connected = await testSupabase();
+
+  if (!connected) return;
+
   await loadLeaderboard();
   await loadAccount();
+
+  console.log("KRAKESMP BEREIT!");
 }
 
 start();
