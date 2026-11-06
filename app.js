@@ -48,14 +48,13 @@ function usernameEmail(username) {
 }
 
 // ==========================================
-// EDGE FUNCTION API
+// EDGE FUNCTION
 // ==========================================
 
 async function api(action, values = {}) {
   const { data, error } = await db.functions.invoke(
     "owner-api",
     {
-      method: "POST",
       body: {
         action,
         ...values
@@ -64,10 +63,8 @@ async function api(action, values = {}) {
   );
 
   if (error) {
-    console.error("EDGE FUNCTION ERROR:", error);
-    throw new Error(
-      "Serververbindung fehlgeschlagen: " + error.message
-    );
+    console.error("OWNER API:", error);
+    throw new Error(error.message);
   }
 
   if (data?.error) {
@@ -102,12 +99,12 @@ $("registerButton").addEventListener("click", async () => {
   const username = $("registerUsername").value.trim();
 
   if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
-    return message(
-      "Benutzername: 3-20 Zeichen, nur Buchstaben, Zahlen und _."
-    );
+    message("Benutzername: 3-20 Zeichen, nur Buchstaben, Zahlen und _.");
+    return;
   }
 
   button.disabled = true;
+  message("Anfrage wird gesendet ...", true);
 
   try {
     await api("apply", { username });
@@ -144,9 +141,8 @@ async function login() {
     !/^[a-zA-Z0-9_]{3,20}$/.test(username) ||
     code.length < 12
   ) {
-    return message(
-      "Benutzername oder Sicherheitscode ungültig."
-    );
+    message("Benutzername oder Sicherheitscode ungültig.");
+    return;
   }
 
   button.disabled = true;
@@ -173,11 +169,8 @@ async function login() {
     message("Erfolgreich eingeloggt!", true);
 
   } catch (error) {
-    console.error(error);
-
-    message(
-      "Login fehlgeschlagen. Prüfe Benutzername und Sicherheitscode."
-    );
+    console.error("LOGIN:", error);
+    message("Login fehlgeschlagen. Prüfe Benutzername und Sicherheitscode.");
 
   } finally {
     button.disabled = false;
@@ -208,9 +201,7 @@ async function checkPlayer() {
   }
 
   if (data.is_banned || data.status !== "active") {
-    message(
-      "Dein Account ist gesperrt. Bitte Owner kontaktieren."
-    );
+    message("Dein Account ist gesperrt. Bitte Owner kontaktieren.");
     return false;
   }
 
@@ -245,7 +236,6 @@ async function loadDashboard() {
   $("dashboard").hidden = false;
 
   $("profileName").textContent = profile.username;
-
   $("ownerButton").hidden = user.id !== OWNER_ID;
 
   const { data: rounds, error: roundsError } = await db
@@ -333,9 +323,7 @@ async function loadLeaderboard() {
 
   } catch (error) {
     console.error("LEADERBOARD:", error);
-
-    container.textContent =
-      "Rangliste konnte nicht geladen werden.";
+    container.textContent = "Rangliste konnte nicht geladen werden.";
   }
 }
 
