@@ -1,3 +1,4 @@
+
 <!DOCTYPE html>
 <html lang="de">
 <head>
@@ -26,24 +27,31 @@
 
     <h2>🔐 OWNER LOGIN</h2>
 
+    <p>Nur der registrierte Owner darf dieses Panel betreten.</p>
+
     <input
       id="email"
       type="email"
       placeholder="Owner E-Mail"
+      autocomplete="username"
     >
 
     <input
       id="password"
       type="password"
       placeholder="Owner Passwort"
+      autocomplete="current-password"
     >
 
-    <button onclick="adminLogin()">
+    <button id="loginButton" type="button" onclick="adminLogin()">
       👑 EINLOGGEN
     </button>
 
+    <p id="loginError" class="red"></p>
+
     <button
       class="secondary"
+      type="button"
       onclick="location.href='index.html'">
       ZURÜCK ZUM LEADERBOARD
     </button>
@@ -63,6 +71,8 @@
     <p class="green" id="status">
       OWNER AKTIV
     </p>
+
+    <p>Willkommen im KRAKESMP Owner Panel.</p>
 
     <hr>
 
@@ -97,13 +107,13 @@
     <!-- STATISTIK EINTRAGEN -->
     <h2>➕ STATISTIK EINTRAGEN</h2>
 
-    <label>Spieler auswählen</label>
+    <label for="roundUser">Spieler auswählen</label>
 
     <select id="roundUser">
       <option value="">Spieler auswählen...</option>
     </select>
 
-    <label>Spielname / Event</label>
+    <label for="gameName">Spielname / Event</label>
 
     <input
       id="gameName"
@@ -111,7 +121,7 @@
       placeholder="z.B. PvP Event"
     >
 
-    <label>Einsatz</label>
+    <label for="stake">Einsatz</label>
 
     <input
       id="stake"
@@ -120,7 +130,7 @@
       placeholder="z.B. 500"
     >
 
-    <label>Profit / Verlust</label>
+    <label for="result">Profit / Verlust</label>
 
     <input
       id="result"
@@ -128,22 +138,16 @@
       placeholder="z.B. 250 oder -100"
     >
 
-    <label>Ergebnis</label>
+    <label for="won">Ergebnis</label>
 
     <select id="won">
-
-      <option value="true">
-        Gewonnen
-      </option>
-
-      <option value="false">
-        Verloren
-      </option>
-
+      <option value="true">Gewonnen</option>
+      <option value="false">Verloren</option>
     </select>
 
     <button
       id="saveRoundButton"
+      type="button"
       onclick="saveRound()"
     >
       STATISTIK SPEICHERN
@@ -151,6 +155,7 @@
 
     <button
       class="secondary"
+      type="button"
       onclick="resetRoundForm()"
     >
       FORMULAR ZURÜCKSETZEN
@@ -170,6 +175,7 @@
     <!-- NAVIGATION -->
     <button
       class="secondary"
+      type="button"
       onclick="loadAdminData()"
     >
       🔄 DATEN AKTUALISIEREN
@@ -177,6 +183,7 @@
 
     <button
       class="secondary"
+      type="button"
       onclick="location.href='index.html'"
     >
       ZURÜCK ZUM LEADERBOARD
@@ -184,6 +191,7 @@
 
     <button
       class="danger"
+      type="button"
       onclick="adminLogout()"
     >
       ABMELDEN
@@ -197,7 +205,7 @@
   KRAKESMP · OWNER MANAGEMENT
 </footer>
 
-<script src="app.js"></script>
+<!-- NUR ADMIN.JS LADEN -->
 <script src="admin.js"></script>
 
 </body>
