@@ -34,14 +34,14 @@ async function adminLogin() {
 }
 
 // ==========================================
-// SPIELER UND STATISTIKEN
+// DATEN LADEN
 // ==========================================
 
 async function loadAdminData() {
   const { data: players, error } = await db
-    .from("krake_profiles")
-    .select("user_id, username")
-    .order("username");
+    .from("ks_players")
+    .select("*")
+    .order("total_profit", { ascending: false });
 
   if (error) return showMessage(error.message);
 
@@ -59,66 +59,66 @@ async function loadAdminData() {
     allPlayers.length;
 
   document.getElementById("totalTurnover").textContent =
-    money(allRounds.reduce((s, r) => s + Number(r.stake), 0));
+    money(allRounds.reduce((s, r) => s + Number(r.stake || 0), 0));
 
-  const select = document.getElementById("roundUser");
-
-  select.innerHTML = allPlayers.map(p => `
-    <option value="${p.user_id}">
-      ${escapeHTML(p.username)}
-    </option>
-  `).join("");
+  document.getElementById("roundUser").innerHTML =
+    allPlayers.map(p => `
+      <option value="${p.id}">
+        ${escapeHTML(p.username)}
+      </option>
+    `).join("");
 
   document.getElementById("players").innerHTML =
     allPlayers.map(p => {
-      const own = allRounds.filter(r => r.user_id === p.user_id);
-      const wins = own.filter(r => r.won).length;
-      const losses = own.filter(r => !r.won).length;
-      const profit = own.reduce((s, r) => s + Number(r.result), 0);
-      const rate = own.length ? wins / own.length * 100 : 0;
+      const wins = Number(p.total_wins || 0);
+      const losses = Number(p.total_losses || 0);
+      const total = wins + losses;
+      const rate = total ? wins / total * 100 : 0;
 
       return `
         <div class="player">
           <b>${escapeHTML(p.username)}</b>
-          <p>Runden: ${own.length}</p>
+          <p>Runden: ${p.total_rounds}</p>
           <p>Siege: ${wins} | Niederlagen: ${losses}</p>
           <p>Winrate: ${rate.toFixed(1)}%</p>
-          <p>Profit: ${money(profit)}</p>
-          <p>Umsatz: ${money(
-            own.reduce((s, r) => s + Number(r.stake), 0)
-          )}</p>
+          <p>Profit: ${money(p.total_profit)}</p>
         </div>
       `;
     }).join("") || "Keine Spieler.";
 
   document.getElementById("roundList").innerHTML =
-    allRounds.slice(0, 50).map(r => `
-      <div class="player">
-        <b>${escapeHTML(r.game_name)}</b>
-        <p>Spieler-ID: ${escapeHTML(r.user_id)}</p>
-        <p>Einsatz: ${money(r.stake)}</p>
-        <p>Profit: ${money(r.result)}</p>
-        <p>${r.won ? "GEWONNEN" : "VERLOREN"}</p>
-        <button onclick="editRound(${r.id})">BEARBEITEN</button>
-        <button class="danger" onclick="deleteRound(${r.id})">LÖSCHEN</button>
-      </div>
-    `).join("") || "Noch keine Einträge.";
+    allRounds.slice(0, 50).map(r => {
+      const player = allPlayers.find(p => p.id === r.user_id);
+
+      return `
+        <div class="player">
+          <b>${escapeHTML(player?.username || "Unbekannt")}</b>
+          <p>${escapeHTML(r.game_name)}</p>
+          <p>Einsatz: ${money(r.stake)}</p>
+          <p>Ergebnis: ${money(r.result)}</p>
+          <p>${r.won ? "GEWONNEN" : "VERLOREN"}</p>
+          <button onclick="editRound(${r.id})">BEARBEITEN</button>
+          <button class="danger" onclick="deleteRound(${r.id})">LÖSCHEN</button>
+        </div>
+      `;
+    }).join("") || "Noch keine Einträge.";
 }
 
 // ==========================================
-// STATISTIK EINTRAGEN
+// RUNDE SPEICHERN
 // ==========================================
 
 async function addRound() {
   const userId = document.getElementById("roundUser").value;
   const gameName = document.getElementById("gameName").value.trim();
   const stake = Number(document.getElementById("stake").value);
-  const result = Number(document.getElementById("result").value);
+  const resultText = document.getElementById("result").value;
+  const result = Number(resultText);
   const won = document.getElementById("won").value === "true";
 
   if (!userId || !gameName ||
       !Number.isSafeInteger(stake) || stake < 0 ||
-      !Number.isSafeInteger(result)) {
+      resultText === "" || !Number.isSafeInteger(result)) {
     return showMessage("Bitte gültige Werte eingeben!");
   }
 
@@ -138,7 +138,7 @@ async function addRound() {
 }
 
 // ==========================================
-// STATISTIK BEARBEITEN
+// RUNDE BEARBEITEN
 // ==========================================
 
 async function editRound(id) {
@@ -165,7 +165,7 @@ async function editRound(id) {
 }
 
 // ==========================================
-// SPEICHERN / AKTUALISIEREN
+// ÄNDERUNGEN SPEICHERN
 // ==========================================
 
 async function saveRound() {
@@ -174,18 +174,25 @@ async function saveRound() {
   const userId = document.getElementById("roundUser").value;
   const gameName = document.getElementById("gameName").value.trim();
   const stake = Number(document.getElementById("stake").value);
-  const result = Number(document.getElementById("result").value);
+  const resultText = document.getElementById("result").value;
+  const result = Number(resultText);
   const won = document.getElementById("won").value === "true";
 
   if (!userId || !gameName ||
       !Number.isSafeInteger(stake) || stake < 0 ||
-      !Number.isSafeInteger(result)) {
+      resultText === "" || !Number.isSafeInteger(result)) {
     return showMessage("Ungültige Eingaben!");
   }
 
   const { error } = await db
     .from("ks_rounds")
-    .update({ user_id: userId, game_name: gameName, stake, result, won })
+    .update({
+      user_id: userId,
+      game_name: gameName,
+      stake,
+      result,
+      won
+    })
     .eq("id", editingRoundId);
 
   if (error) return showMessage(error.message);
@@ -211,7 +218,7 @@ function resetRoundForm() {
 }
 
 // ==========================================
-// LÖSCHEN
+// RUNDE LÖSCHEN
 // ==========================================
 
 async function deleteRound(id) {
