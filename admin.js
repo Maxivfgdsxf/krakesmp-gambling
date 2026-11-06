@@ -1,11 +1,8 @@
 
 // ==========================================
-// KRAKESMP - OWNER ADMIN SYSTEM
+// KRAKESMP OWNER PANEL
 // ==========================================
 
-const ADMIN_DB = db;
-
-// Owner-Zugriff prüfen
 async function adminLogin() {
   const email = document.getElementById("email").value.trim();
   const password = document.getElementById("password").value;
@@ -14,18 +11,17 @@ async function adminLogin() {
     return showMessage("Bitte Zugangsdaten eingeben!");
   }
 
-  const { error } = await ADMIN_DB.auth.signInWithPassword({
-    email,
-    password
+  const { error } = await db.auth.signInWithPassword({
+    email, password
   });
 
   if (error) return showMessage(error.message);
 
-  const { data: allowed, error: adminError } =
-    await ADMIN_DB.rpc("krake_is_admin");
+  const { data, error: adminError } =
+    await db.rpc("krake_is_admin");
 
-  if (adminError || allowed !== true) {
-    await ADMIN_DB.auth.signOut();
+  if (adminError || data !== true) {
+    await db.auth.signOut();
     return showMessage("Kein Owner-Zugriff!");
   }
 
@@ -35,26 +31,24 @@ async function adminLogin() {
   await loadAdminData();
 }
 
-// Admin-Daten laden
+// ==========================================
+// SPIELER LADEN
+// ==========================================
+
 async function loadAdminData() {
-  const { data: players, error } = await ADMIN_DB
+  const { data: players, error } = await db
     .from("krake_profiles")
-    .select("*")
-    .order("total_turnover", { ascending: false });
+    .select("user_id, username, total_turnover")
+    .order("username");
 
   if (error) return showMessage(error.message);
-
-  const playerSelect = document.getElementById("roundUser");
 
   document.getElementById("playerCount").textContent =
     players.length;
 
-  document.getElementById("totalTurnover").textContent =
-    money(players.reduce(
-      (sum, p) => sum + Number(p.total_turnover || 0), 0
-    ));
+  const select = document.getElementById("roundUser");
 
-  playerSelect.innerHTML = players.map(p => `
+  select.innerHTML = players.map(p => `
     <option value="${p.user_id}">
       ${escapeHTML(p.username)}
     </option>
@@ -65,13 +59,51 @@ async function loadAdminData() {
       <div class="player">
         <b>${escapeHTML(p.username)}</b>
         <p>Umsatz: ${money(p.total_turnover)}</p>
+        <button onclick="editPlayer('${p.user_id}')">
+          STATISTIKEN ANSEHEN
+        </button>
       </div>
-    `).join("") || "Keine Spieler vorhanden.";
+    `).join("") || "Keine Spieler.";
 
   await loadAdminRounds();
 }
 
-// Neue Statistik eintragen
+// ==========================================
+// GESAMTUMSATZ
+// ==========================================
+
+async function loadAdminRounds() {
+  const { data, error } = await db
+    .from("ks_rounds")
+    .select("*")
+    .order("created_at", { ascending: false });
+
+  if (error) return showMessage(error.message);
+
+  const rounds = data || [];
+
+  document.getElementById("totalTurnover").textContent =
+    money(rounds.reduce((sum, r) => sum + Number(r.stake), 0));
+
+  document.getElementById("roundList").innerHTML =
+    rounds.slice(0, 30).map(r => `
+      <div class="player">
+        <b>${escapeHTML(r.game_name)}</b>
+        <p>Spieler-ID: ${escapeHTML(r.user_id)}</p>
+        <p>Einsatz: ${money(r.stake)}</p>
+        <p>Profit: ${money(r.result)}</p>
+        <p>${r.won ? "GEWONNEN" : "VERLOREN"}</p>
+        <button onclick="deleteRound(${r.id})">
+          EINTRAG LÖSCHEN
+        </button>
+      </div>
+    `).join("") || "Keine Einträge.";
+}
+
+// ==========================================
+// STATISTIK EINTRAGEN
+// ==========================================
+
 async function addRound() {
   const userId = document.getElementById("roundUser").value;
   const gameName = document.getElementById("gameName").value.trim();
@@ -79,16 +111,13 @@ async function addRound() {
   const result = Number(document.getElementById("result").value);
   const won = document.getElementById("won").value === "true";
 
-  if (!userId || !gameName) {
-    return showMessage("Bitte Spieler und Spielnamen auswählen!");
-  }
-
-  if (!Number.isSafeInteger(stake) || stake < 0 ||
+  if (!userId || !gameName ||
+      !Number.isSafeInteger(stake) || stake < 0 ||
       !Number.isSafeInteger(result)) {
-    return showMessage("Ungültige Zahlen!");
+    return showMessage("Bitte gültige Daten eingeben!");
   }
 
-  const { error } = await ADMIN_DB
+  const { error } = await db
     .from("ks_rounds")
     .insert({
       user_id: userId,
@@ -100,51 +129,66 @@ async function addRound() {
 
   if (error) return showMessage(error.message);
 
-  const { error: updateError } = await ADMIN_DB
-    .from("krake_profiles")
-    .update({
-      total_turnover: undefined
-    })
-    .eq("user_id", userId);
-
-  // Umsatz wird separat über die Datenbank verwaltet.
-  await loadAdminData();
-
   document.getElementById("gameName").value = "";
   document.getElementById("stake").value = "";
   document.getElementById("result").value = "";
 
   showMessage("Statistik gespeichert!");
+
+  await loadAdminData();
 }
 
-// Letzte Einträge anzeigen
-async function loadAdminRounds() {
-  const { data, error } = await ADMIN_DB
+// ==========================================
+// SPIELERSTATISTIK
+// ==========================================
+
+async function editPlayer(userId) {
+  const { data, error } = await db
     .from("ks_rounds")
     .select("*")
-    .order("created_at", { ascending: false })
-    .limit(30);
+    .eq("user_id", userId);
 
-  if (error) {
-    document.getElementById("roundList").textContent =
-      error.message;
-    return;
-  }
+  if (error) return showMessage(error.message);
 
-  document.getElementById("roundList").innerHTML =
-    (data || []).map(r => `
-      <div class="player">
-        <b>${escapeHTML(r.game_name)}</b>
-        <p>Spieler-ID: ${escapeHTML(r.user_id)}</p>
-        <p>Einsatz: ${money(r.stake)}</p>
-        <p>Ergebnis: ${money(r.result)}</p>
-        <p>${r.won ? "GEWONNEN" : "VERLOREN"}</p>
-      </div>
-    `).join("") || "Noch keine Einträge.";
+  const rounds = data || [];
+  const wins = rounds.filter(r => r.won).length;
+  const losses = rounds.filter(r => !r.won).length;
+  const profit = rounds.reduce((s, r) => s + Number(r.result), 0);
+
+  showMessage(
+    "Spielerstatistik\n" +
+    "Runden: " + rounds.length +
+    "\nSiege: " + wins +
+    "\nNiederlagen: " + losses +
+    "\nWinrate: " +
+    (rounds.length ? (wins / rounds.length * 100).toFixed(1) : 0) +
+    "%\nProfit: " + money(profit)
+  );
 }
 
-// Abmelden
+// ==========================================
+// EINTRAG LÖSCHEN
+// ==========================================
+
+async function deleteRound(id) {
+  if (!confirm("Statistik wirklich löschen?")) return;
+
+  const { error } = await db
+    .from("ks_rounds")
+    .delete()
+    .eq("id", id);
+
+  if (error) return showMessage(error.message);
+
+  showMessage("Eintrag gelöscht!");
+  await loadAdminData();
+}
+
+// ==========================================
+// ABMELDEN
+// ==========================================
+
 async function adminLogout() {
-  await ADMIN_DB.auth.signOut();
-  location.reload();
+  await db.auth.signOut();
+  location.href = "index.html";
 }
