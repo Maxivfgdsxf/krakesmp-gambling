@@ -2,13 +2,12 @@
 <!DOCTYPE html>
 <html lang="de">
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
-<title>KRAKESMP | Leaderboard</title>
-<link rel="stylesheet" href="style.css">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>KRAKESMP | Official</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 </head>
-
 <body>
 
 <header>
@@ -26,60 +25,59 @@
 <section class="card" id="loginPanel">
   <h2>🔐 ACCOUNT</h2>
 
-  <input id="username" placeholder="Benutzername (nur Registrierung)">
-  <input id="email" type="email" placeholder="E-Mail">
-  <input id="password" type="password" placeholder="Passwort">
+  <div class="tabs">
+    <button type="button" id="showLogin">LOGIN</button>
+    <button type="button" id="showRegister" class="secondary">ACCOUNT BEANTRAGEN</button>
+  </div>
 
-  <button onclick="register()">ACCOUNT ERSTELLEN</button>
-  <button onclick="login()">EINLOGGEN</button>
+  <div id="loginForm">
+    <input id="loginUsername" placeholder="Benutzername" maxlength="20" autocomplete="username">
+    <input id="loginCode" type="password" placeholder="Sicherheitscode" autocomplete="current-password">
+    <button type="button" id="loginButton">EINLOGGEN</button>
+  </div>
+
+  <div id="registerForm" hidden>
+    <input id="registerUsername" placeholder="Gewünschter Benutzername" maxlength="20">
+    <button type="button" id="registerButton">ACCOUNT BEANTRAGEN</button>
+    <p class="small">
+      Dein Account muss erst vom Owner freigeschaltet werden.
+      Du erhältst deinen Sicherheitscode anschließend privat.
+    </p>
+  </div>
+
+  <p id="authMessage" role="status"></p>
 </section>
 
-<section class="card" id="dashboard" style="display:none">
+<section class="card" id="dashboard" hidden>
   <h2>👤 MEIN ACCOUNT</h2>
 
   <p>Spieler: <b id="profileName"></b></p>
-  <p>Guthaben: <b id="balance">0 Coins</b></p>
-
-  <hr>
-
-  <h3>📊 MEINE STATISTIKEN</h3>
 
   <div class="stats">
     <div class="stat">Runden<b id="myRounds">0</b></div>
-    <div class="stat">Siege<b id="myWins">0</b></div>
-    <div class="stat">Niederlagen<b id="myLosses">0</b></div>
+    <div class="stat">Profit<b id="myProfit">0 Coins</b></div>
     <div class="stat">Winrate<b id="myWinrate">0%</b></div>
-    <div class="stat">Gesamteinsätze<b id="myTotalStake">0</b></div>
-    <div class="stat">Profit<b id="myProfit">0</b></div>
-    <div class="stat">Verlust<b id="myLoss">0</b></div>
   </div>
 
   <hr>
 
   <h3>📜 LETZTE SPIELRUNGEN</h3>
-  <div id="myRoundsList">Noch keine Statistiken.</div>
+  <div id="myRoundsList">Keine Spielrunden vorhanden.</div>
 
-  <hr>
-
-  <button id="adminLink"
-    style="display:none"
-    onclick="location.href='admin.html'">
-    👑 OWNER ADMIN MENÜ
+  <button type="button" class="secondary" id="logoutButton">
+    ABMELDEN
   </button>
 
-  <button class="secondary" onclick="logout()">
-    ABMELDEN
+  <button type="button" id="ownerButton" hidden
+    onclick="location.href='admin.html'">
+    👑 OWNER PANEL
   </button>
 </section>
 
 </main>
 
-<footer>
-  KRAKESMP · OFFICIAL STATISTICS
-</footer>
+<footer>KRAKESMP · OFFICIAL STATISTICS</footer>
 
 <script src="app.js"></script>
-
 </body>
 </html>
-
