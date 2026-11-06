@@ -2,14 +2,14 @@
 "use strict";
 
 // ==========================================
-// KRAKESMP OWNER PANEL V3
+// KRAKESMP OWNER PANEL V4
 // ==========================================
 
 const SUPABASE_URL =
   "https://zrijikvllmotgsixcguc.supabase.co";
 
 const SUPABASE_KEY =
-  "sb_publishable_DVDRAKqYV92NtT1FcYYLLw_Uzs";
+  "sb_publishable_DVDRAKqYV92NtT1FcYYLLw_UzsR-fZu";
 
 const OWNER_ID =
   "cee3680c-3580-47c5-8c64-0277eac03800";
@@ -67,10 +67,14 @@ function showAdmin() {
 }
 
 // ==========================================
-// API MIT AUTHORIZATION HEADER
+// API
 // ==========================================
 
 async function api(action, values = {}) {
+  if (!verified) {
+    throw new Error("Owner nicht angemeldet.");
+  }
+
   const {
     data: { session },
     error: sessionError
@@ -79,7 +83,7 @@ async function api(action, values = {}) {
   if (sessionError) throw sessionError;
 
   if (!session?.access_token) {
-    throw new Error("Nicht angemeldet. Bitte erneut einloggen.");
+    throw new Error("Session abgelaufen. Bitte neu anmelden.");
   }
 
   const { data, error } = await db.functions.invoke(
@@ -119,7 +123,7 @@ async function verifyOwner() {
 }
 
 // ==========================================
-// LOGIN
+// LOGIN MIT ALTER OWNER-E-MAIL
 // ==========================================
 
 async function adminLogin() {
@@ -211,7 +215,6 @@ async function loadAdminData() {
 function renderApplications() {
   const container = $("applications");
 
-  // Bereich ist in der bisherigen HTML noch nicht vorhanden.
   if (!container) return;
 
   container.innerHTML = applications.map(a => `
@@ -251,7 +254,9 @@ if (applicationsContainer) {
 
     try {
       if (action === "approve") {
-        const application = applications.find(a => a.id == id);
+        const application = applications.find(
+          a => String(a.id) === String(id)
+        );
 
         if (!application) return;
 
@@ -358,10 +363,7 @@ $("players").addEventListener("click", async event => {
 
       const code = randomCode();
 
-      await api("set_code", {
-        id,
-        code
-      });
+      await api("set_code", { id, code });
 
       alert(
         "NEUER SICHERHEITSCODE\n\n" +
@@ -379,10 +381,7 @@ $("players").addEventListener("click", async event => {
 
       if (!username) return;
 
-      await api("rename", {
-        id,
-        username
-      });
+      await api("rename", { id, username });
     }
 
     if (action === "ban") {
@@ -393,10 +392,7 @@ $("players").addEventListener("click", async event => {
 
       if (reason === null) return;
 
-      await api("ban", {
-        id,
-        reason
-      });
+      await api("ban", { id, reason });
     }
 
     if (action === "unban") {
@@ -482,9 +478,7 @@ async function saveRound() {
       won
     });
 
-    $("gameName").value = "";
-    $("stake").value = "";
-    $("result").value = "";
+    resetRoundForm();
 
     alert("Spielrunde gespeichert!");
 
@@ -493,6 +487,14 @@ async function saveRound() {
   } catch (error) {
     alert("Fehler: " + error.message);
   }
+}
+
+function resetRoundForm() {
+  $("roundUser").value = "";
+  $("gameName").value = "";
+  $("stake").value = "";
+  $("result").value = "";
+  $("won").value = "true";
 }
 
 // ==========================================
@@ -556,7 +558,7 @@ async function adminLogout() {
 }
 
 // ==========================================
-// START / SESSION WIEDERHERSTELLEN
+// START
 // ==========================================
 
 async function start() {
@@ -590,12 +592,13 @@ async function start() {
 }
 
 // ==========================================
-// HTML BUTTONS VERFÜGBAR MACHEN
+// HTML FUNKTIONEN
 // ==========================================
 
 window.adminLogin = adminLogin;
 window.adminLogout = adminLogout;
 window.loadAdminData = loadAdminData;
 window.saveRound = saveRound;
+window.resetRoundForm = resetRoundForm;
 
 start();
