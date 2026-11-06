@@ -1,0 +1,201 @@
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>KRAKESMP GAMBLING</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0c0c10;color:#eee;font-family:Arial}
+header{text-align:center;padding:38px 15px;background:#17171e;border-bottom:2px solid #c49a42}
+h1{font-size:36px;color:#e8bd58;margin:0}
+header p{letter-spacing:4px;color:#c4a96c}
+main{max-width:850px;margin:30px auto;padding:15px}
+.card{background:#191920;border:1px solid #37343a;border-radius:13px;padding:20px;margin-bottom:18px}
+h2{color:#e8bd58;margin-top:0}
+input,button,select{width:100%;padding:13px;margin:6px 0;border-radius:7px;border:1px solid #444;background:#292932;color:white}
+button{background:#c49a42;color:#111;font-weight:bold;cursor:pointer}
+.secondary{background:#383840;color:white}
+.danger{background:#8b3030;color:white}
+.row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.player{padding:15px;background:#25252e;border-radius:9px;margin:10px 0}
+.green{color:#63d995}
+.red{color:#ff7474}
+.small{font-size:12px;color:#aaa}
+.stats{display:grid;grid-template-columns:repeat(2,1fr);gap:10px}
+.stat{background:#25252e;padding:15px;border-radius:9px}
+.stat b{font-size:22px;color:#e8bd58;display:block;margin-top:7px}
+#adminPanel{display:none}
+hr{border:0;border-top:1px solid #444;margin:20px 0}
+footer{text-align:center;color:#777;font-size:12px;padding:20px}
+</style>
+</head>
+<body>
+<header>
+<h1>🎰 KRAKESMP</h1>
+<p>G A M B L I N G</p>
+<div class="small">THE OFFICIAL GAMBLER LEADERBOARD</div>
+</header>
+<main>
+<div class="card">
+<h2>🏆 GAMBLER LEADERBOARD</h2>
+<div class="stats">
+<div class="stat">👥 Spieler<b id="count">0</b></div>
+<div class="stat">💰 Einsätze<b id="total">0 €</b></div>
+<div class="stat">📈 Gesamtprofit<b id="profit">0 €</b></div>
+<div class="stat">🎲 Spielrunden<b id="rounds">0</b></div>
+</div>
+<div id="ranking">Lade Rangliste...</div>
+</div>
+
+<div class="card">
+<h2>🔐 ADMIN LOGIN</h2>
+<div id="loginPanel">
+<input id="email" type="email" placeholder="Admin E-Mail">
+<input id="password" type="password" placeholder="Admin Passwort">
+<button onclick="login()">👑 ADMIN LOGIN</button>
+</div>
+
+<div id="adminPanel">
+<p class="green">✓ ADMIN MODUS AKTIV</p>
+<h3>➕ Spieler hinzufügen</h3>
+<input id="newName" placeholder="Spielername">
+<button onclick="addPlayer()">SPIELER HINZUFÜGEN</button>
+<hr>
+<h3>🎲 Ergebnis eintragen</h3>
+<select id="playerSelect"></select>
+<input id="stake" type="number" min="0" placeholder="Einsatz in €">
+<input id="result" type="number" placeholder="Netto-Ergebnis: 500 oder -200">
+<p class="small">Positiver Wert = Gewinn. Negativer Wert = Verlust.</p>
+<button onclick="addResult()">ERGEBNIS VERBUCHEN</button>
+<hr>
+<h3>🗑️ Spieler verwalten</h3>
+<div id="managePlayers"></div>
+<hr>
+<button class="secondary" onclick="logout()">ABMELDEN</button>
+</div>
+</div>
+<footer>KRAKESMP GAMBLING · BLACK & GOLD</footer>
+</main>
+
+<script>
+const SUPABASE_URL="https://zrijikvllmotgsixcguc.supabase.co";
+const SUPABASE_KEY="sb_publishable_DVDRAKqYV92NtT1FcYYLLw_UzsR-fZu";
+const db=window.supabase.createClient(SUPABASE_URL,SUPABASE_KEY);
+let isAdmin=false;
+const money=n=>Number(n).toLocaleString("de-DE")+" €";
+
+function safe(s){
+ return String(s).replace(/[&<>"']/g,c=>({
+ "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
+ })[c]);
+}
+
+async function loadPlayers(){
+ const {data,error}=await db.from("players").select("*").order("profit",{ascending:false});
+ if(error){document.getElementById("ranking").textContent="Fehler: "+error.message;return;}
+ const players=data||[];
+ document.getElementById("count").textContent=players.length;
+ document.getElementById("total").textContent=money(players.reduce((s,p)=>s+Number(p.bet),0));
+ document.getElementById("profit").textContent=money(players.reduce((s,p)=>s+Number(p.profit),0));
+ document.getElementById("rounds").textContent=players.reduce((s,p)=>s+Number(p.rounds),0);
+ document.getElementById("ranking").innerHTML=players.map((p,i)=>`
+ <div class="player">
+ <div class="row">
+ <b>${["🥇","🥈","🥉"][i]||"🏅"} ${safe(p.name)}</b>
+ <b class="${Number(p.profit)>=0?"green":"red"}">${Number(p.profit)>0?"+":""}${money(p.profit)}</b>
+ </div>
+ <div class="small">Einsatz: ${money(p.bet)} · Verlust: ${money(p.loss)} · Runden: ${p.rounds}</div>
+ </div>`).join("")||'<p class="small">Noch keine Spieler eingetragen.</p>';
+ document.getElementById("playerSelect").innerHTML=players.map(p=>`<option value="${p.id}">${safe(p.name)}</option>`).join("");
+ document.getElementById("managePlayers").innerHTML=players.map(p=>`
+ <div class="row"><span>${safe(p.name)}</span>
+ <button class="danger" style="width:auto" onclick="deletePlayer(${p.id})">Löschen</button></div>`).join("");
+}
+
+async function login(){
+ const {error}=await db.auth.signInWithPassword({
+ email:document.getElementById("email").value,
+ password:document.getElementById("password").value
+ });
+ if(error)return alert(error.message);
+ await checkAdmin();
+}
+
+async function checkAdmin(){
+ const {data:{user}}=await db.auth.getUser();
+ if(!user){showLogin();return;}
+ const {data,error}=await db.from("admins").select("user_id").eq("user_id",user.id).maybeSingle();
+ if(error||!data){
+ await db.auth.signOut();showLogin();
+ alert("Kein Admin-Zugriff!");return;
+ }
+ isAdmin=true;
+ document.getElementById("loginPanel").style.display="none";
+ document.getElementById("adminPanel").style.display="block";
+ await loadPlayers();
+}
+
+function showLogin(){
+ document.getElementById("loginPanel").style.display="block";
+ document.getElementById("adminPanel").style.display="none";
+}
+
+async function logout(){
+ await db.auth.signOut();isAdmin=false;showLogin();
+}
+
+async function addPlayer(){
+ if(!isAdmin)return;
+ const name=document.getElementById("newName").value.trim();
+ if(!name)return alert("Bitte Namen eingeben!");
+ const {error}=await db.from("players").insert({name});
+ if(error)return alert(error.message);
+ document.getElementById("newName").value="";
+ await loadPlayers();
+}
+
+async function addResult(){
+ if(!isAdmin)return;
+ const id=document.getElementById("playerSelect").value;
+ const stake=Number(document.getElementById("stake").value);
+ const resultText=document.getElementById("result").value;
+ const result=Number(resultText);
+ if(!id||!Number.isFinite(stake)||stake<=0||resultText===""||!Number.isFinite(result))
+ return alert("Bitte gültige Werte eingeben!");
+ const {data:p,error}=await db.from("players").select("*").eq("id",id).single();
+ if(error||!p)return alert("Spieler nicht gefunden!");
+ const {error:updateError}=await db.from("players").update({
+ bet:Number(p.bet)+stake,
+ profit:Number(p.profit)+result,
+ loss:Number(p.loss)+Math.max(0,-result),
+ rounds:Number(p.rounds)+1
+ }).eq("id",id);
+ if(updateError)return alert(updateError.message);
+ document.getElementById("stake").value="";
+ document.getElementById("result").value="";
+ await loadPlayers();
+ alert("Ergebnis gespeichert!");
+}
+
+async function deletePlayer(id){
+ if(!isAdmin||!confirm("Spieler wirklich löschen?"))return;
+ const {error}=await db.from("players").delete().eq("id",id);
+ if(error)return alert(error.message);
+ await loadPlayers();
+}
+
+db.auth.onAuthStateChange((event)=>{
+ if(event==="SIGNED_OUT"){isAdmin=false;showLogin();}
+});
+
+async function start(){
+ await loadPlayers();
+ await checkAdmin();
+}
+start();
+</script>
+</body>
+</html>
