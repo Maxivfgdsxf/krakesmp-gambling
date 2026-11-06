@@ -1,0 +1,125 @@
+
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>KRAKESMP | Gambler Leaderboard</title>
+  <link rel="stylesheet" href="style.css">
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+</head>
+<body>
+
+<header>
+  <h1>🎰 KRAKESMP</h1>
+  <p>GLOBAL GAMBLER LEADERBOARD</p>
+  <nav>
+    <a href="#leaderboard">LEADERBOARD</a>
+    <a href="#account">ACCOUNT</a>
+    <a href="#prizes">PRIZES</a>
+  </nav>
+</header>
+
+<main>
+
+  <section class="card" id="leaderboard">
+    <h2>🏆 GLOBAL LEADERBOARD</h2>
+
+    <div class="stats-grid">
+      <div class="stat">
+        <span>SPIELER</span>
+        <strong id="playerCount">0</strong>
+      </div>
+      <div class="stat">
+        <span>SPIELRUNDEN</span>
+        <strong id="roundCount">0</strong>
+      </div>
+    </div>
+
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>RANG</th>
+            <th>SPIELER</th>
+            <th>PROFIT</th>
+            <th>WINRATE</th>
+            <th>RUNDEN</th>
+          </tr>
+        </thead>
+        <tbody id="leaderboardBody">
+          <tr><td colspan="5">Lade Rangliste...</td></tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section class="card" id="account">
+    <h2>🔐 PLAYER ACCOUNT</h2>
+
+    <div id="loginPanel">
+      <input id="email" type="email" placeholder="E-Mail">
+      <input id="password" type="password" placeholder="Passwort">
+      <button onclick="login()">LOGIN</button>
+      <p class="small">
+        Accounts werden ausschließlich vom Owner erstellt.
+      </p>
+    </div>
+
+    <div id="dashboard" class="hidden">
+      <h3>Willkommen, <span id="profileName"></span></h3>
+
+      <div class="stats-grid">
+        <div class="stat">
+          <span>PROFIT</span>
+          <strong id="myProfit">0</strong>
+        </div>
+        <div class="stat">
+          <span>WINRATE</span>
+          <strong id="myWinrate">0%</strong>
+        </div>
+        <div class="stat">
+          <span>VERLUST</span>
+          <strong id="myLoss">0</strong>
+        </div>
+        <div class="stat">
+          <span>SPIELRUNDEN</span>
+          <strong id="myRounds">0</strong>
+        </div>
+        <div class="stat">
+          <span>UMSATZ</span>
+          <strong id="myTurnover">0</strong>
+        </div>
+        <div class="stat">
+          <span>GUTHABEN</span>
+          <strong id="myBalance">0</strong>
+        </div>
+      </div>
+
+      <h3>Mein Rang</h3>
+      <div id="myRank" class="rank">UNRANKED</div>
+
+      <h3>Meine letzten Spielrunden</h3>
+      <div id="myRoundsList">Keine Spielrunden.</div>
+
+      <button class="secondary" onclick="logout()">LOGOUT</button>
+    </div>
+  </section>
+
+  <section class="card" id="prizes">
+    <h2>🎁 PRIZES</h2>
+    <div id="prizeList">Lade Preise...</div>
+  </section>
+
+  <div id="message" class="message"></div>
+
+</main>
+
+<footer>
+  KRAKESMP GAMBLING · BLACK & GOLD
+</footer>
+
+<script src="app.js"></script>
+<script src="games.js"></script>
+</body>
+</html>
