@@ -2,7 +2,7 @@
 "use strict";
 
 // ==========================================
-// KRAKESMP PLAYER SYSTEM V4
+// KRAKESMP PLAYER SYSTEM V5
 // ==========================================
 
 const SUPABASE_URL =
@@ -23,6 +23,10 @@ const $ = id => document.getElementById(id);
 
 const money = n =>
   Number(n || 0).toLocaleString("de-DE") + " Coins";
+
+// ==========================================
+// HTML SICHERHEIT
+// ==========================================
 
 function escapeHTML(value) {
   return String(value ?? "").replace(/[&<>"']/g, c => ({
@@ -48,7 +52,7 @@ function message(text, success = false) {
 }
 
 // ==========================================
-// BENUTZERNAME ZU E-MAIL
+// BENUTZERNAME
 // ==========================================
 
 function usernameEmail(username) {
@@ -57,28 +61,48 @@ function usernameEmail(username) {
 }
 
 // ==========================================
-// API
+// SUPABASE API
 // ==========================================
 
 async function api(action, values = {}) {
-  const { data, error } = await db.functions.invoke(
-    "owner-api",
-    {
-      body: {
-        action,
-        ...values
+  try {
+    const { data, error } = await db.functions.invoke(
+      "owner-api",
+      {
+        body: {
+          action,
+          ...values
+        }
       }
+    );
+
+    if (error) {
+      console.error("EDGE FUNCTION:", error);
+
+      throw new Error(
+        error.message || "Edge Function Fehler."
+      );
     }
-  );
 
-  if (error) throw error;
-  if (data?.error) throw new Error(data.error);
+    if (!data) {
+      throw new Error("Keine Antwort vom Server.");
+    }
 
-  return data;
+    if (data.error) {
+      throw new Error(data.error);
+    }
+
+    return data;
+
+  } catch (error) {
+    console.error("API ERROR:", error);
+
+    throw error;
+  }
 }
 
 // ==========================================
-// LOGIN / REGISTRIERUNG TABS
+// LOGIN / REGISTER TABS
 // ==========================================
 
 $("showLogin").addEventListener("click", () => {
@@ -107,26 +131,30 @@ $("registerButton").addEventListener("click", async () => {
 
   if (!/^[a-zA-Z0-9_]{3,20}$/.test(username)) {
     return message(
-      "Benutzername: 3-20 Zeichen, nur Buchstaben, Zahlen und _."
+      "Benutzername muss 3-20 Zeichen lang sein."
     );
   }
 
   button.disabled = true;
 
+  message("Antrag wird gesendet...", true);
+
   try {
     await api("apply", { username });
 
     message(
-      "Dein Antrag wurde eingereicht! Warte auf die Freischaltung durch den Owner.",
+      "Dein Antrag wurde erfolgreich eingereicht! Warte auf die Freischaltung durch den Owner.",
       true
     );
 
     $("registerUsername").value = "";
 
   } catch (error) {
-    console.error("REGISTER:", error);
+    console.error("REGISTER ERROR:", error);
 
-    message(error.message);
+    message(
+      "Fehler: " + error.message
+    );
 
   } finally {
     button.disabled = false;
@@ -159,6 +187,8 @@ async function login() {
 
   button.disabled = true;
 
+  message("Anmeldung läuft...", true);
+
   try {
     const { error } = await db.auth.signInWithPassword({
       email: usernameEmail(username),
@@ -181,10 +211,10 @@ async function login() {
     message("Erfolgreich eingeloggt!", true);
 
   } catch (error) {
-    console.error("LOGIN:", error);
+    console.error("LOGIN ERROR:", error);
 
     message(
-      "Login fehlgeschlagen. Prüfe Benutzername und Sicherheitscode."
+      "Login fehlgeschlagen. Bitte Benutzername und Sicherheitscode prüfen."
     );
 
   } finally {
@@ -193,7 +223,7 @@ async function login() {
 }
 
 // ==========================================
-// SPIELER STATUS PRÜFEN
+// SPIELER PRÜFEN
 // ==========================================
 
 async function checkPlayer() {
@@ -203,7 +233,7 @@ async function checkPlayer() {
   } = await db.auth.getUser();
 
   if (authError || !user) {
-    message("Anmeldung konnte nicht überprüft werden.");
+    message("Anmeldung konnte nicht geprüft werden.");
     return false;
   }
 
@@ -214,18 +244,18 @@ async function checkPlayer() {
     .maybeSingle();
 
   if (error || !data) {
-    console.error("PLAYER PROFILE:", error);
+    console.error("PLAYER:", error);
 
-    message("Spielerprofil nicht verfügbar.");
+    message("Spielerprofil nicht gefunden.");
 
     return false;
   }
 
-  if (data.is_banned || data.status !== "active") {
-    message(
-      "Dein Account ist gesperrt. Bitte Owner kontaktieren."
-    );
-
+  if (
+    data.is_banned ||
+    data.status !== "active"
+  ) {
+    message("Dein Account wurde gesperrt.");
     return false;
   }
 
@@ -254,7 +284,10 @@ async function loadDashboard() {
 
   if (error) throw error;
 
-  if (profile.is_banned || profile.status !== "active") {
+  if (
+    profile.is_banned ||
+    profile.status !== "active"
+  ) {
     await db.auth.signOut();
 
     $("dashboard").hidden = true;
@@ -268,9 +301,9 @@ async function loadDashboard() {
   $("loginPanel").hidden = true;
   $("dashboard").hidden = false;
 
-  $("profileName").textContent = profile.username;
+  $("profileName").textContent =
+    profile.username;
 
-  // OWNER BUTTON
   $("ownerButton").hidden =
     user.id !== OWNER_ID;
 
@@ -290,7 +323,7 @@ async function loadDashboard() {
   const list = rounds || [];
 
   // ========================================
-  // STATISTIKEN BERECHNEN
+  // STATISTIKEN
   // ========================================
 
   const profit = list.reduce(
@@ -308,12 +341,14 @@ async function loadDashboard() {
 
   $("myRounds").textContent = list.length;
 
-  $("myProfit").textContent = money(profit);
+  $("myProfit").textContent =
+    money(profit);
 
-  $("myWinrate").textContent = rate + "%";
+  $("myWinrate").textContent =
+    rate + "%";
 
   // ========================================
-  // SPIELVERLAUF ANZEIGEN
+  // SPIELVERLAUF
   // ========================================
 
   $("myRoundsList").innerHTML =
@@ -406,13 +441,12 @@ async function loadLeaderboard() {
     console.error("LEADERBOARD:", error);
 
     container.textContent =
-      "Rangliste konnte nicht geladen werden: " +
-      error.message;
+      "Rangliste konnte nicht geladen werden.";
   }
 }
 
 // ==========================================
-// START / SESSION WIEDERHERSTELLEN
+// SESSION WIEDERHERSTELLEN
 // ==========================================
 
 async function start() {
@@ -443,10 +477,12 @@ async function start() {
   } catch (error) {
     console.error("DASHBOARD:", error);
 
-    message(
-      "Dashboard konnte nicht geladen werden."
-    );
+    message("Dashboard konnte nicht geladen werden.");
   }
 }
+
+// ==========================================
+// START
+// ==========================================
 
 start();
