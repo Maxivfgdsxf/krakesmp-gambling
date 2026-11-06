@@ -1,129 +1,14 @@
-
 <!DOCTYPE html>
 <html lang="de">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
+
   <title>KRAKESMP | OWNER PANEL</title>
 
   <link rel="stylesheet" href="style.css">
+
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-
-  <style>
-    body {
-      background: #0c0c10;
-      color: #eee;
-      font-family: Arial, sans-serif;
-    }
-
-    header {
-      text-align: center;
-      padding: 35px 15px;
-      background: #17171e;
-      border-bottom: 2px solid #c49a42;
-    }
-
-    h1, h2, h3 {
-      color: #e8bd58;
-    }
-
-    main {
-      max-width: 1000px;
-      margin: 30px auto;
-      padding: 15px;
-    }
-
-    .card {
-      background: #191920;
-      border: 1px solid #37343a;
-      border-radius: 13px;
-      padding: 20px;
-      margin-bottom: 20px;
-    }
-
-    input, select, button {
-      width: 100%;
-      padding: 13px;
-      margin: 7px 0;
-      border-radius: 7px;
-      border: 1px solid #444;
-      background: #292932;
-      color: white;
-    }
-
-    button {
-      background: #c49a42;
-      color: #111;
-      font-weight: bold;
-      cursor: pointer;
-    }
-
-    button.secondary {
-      background: #383840;
-      color: white;
-    }
-
-    button.danger {
-      background: #8b3030;
-      color: white;
-    }
-
-    .stats {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }
-
-    .stat, .player {
-      background: #25252e;
-      padding: 15px;
-      border-radius: 9px;
-      margin: 10px 0;
-    }
-
-    .stat b {
-      display: block;
-      font-size: 23px;
-      color: #e8bd58;
-      margin-top: 8px;
-    }
-
-    .green { color: #63d995; }
-    .red { color: #ff7474; }
-
-    .small {
-      color: #aaa;
-      font-size: 12px;
-    }
-
-    hr {
-      border: 0;
-      border-top: 1px solid #444;
-      margin: 22px 0;
-    }
-
-    label {
-      display: block;
-      margin-top: 12px;
-      color: #c4a96c;
-    }
-
-    #adminPanel {
-      display: none;
-    }
-
-    footer {
-      text-align: center;
-      color: #777;
-      padding: 25px;
-    }
-
-    @media(max-width:500px) {
-      .stats {
-        grid-template-columns: 1fr;
-      }
-    }
-  </style>
 </head>
 
 <body>
@@ -131,130 +16,185 @@
 <header>
   <h1>👑 KRAKESMP</h1>
   <p>OWNER MANAGEMENT PANEL</p>
-  <span class="small">PRIVATE ADMIN AREA</span>
+  <div class="small">PRIVATE ADMIN AREA</div>
 </header>
 
 <main>
 
-  <!-- LOGIN -->
-
+  <!-- OWNER LOGIN -->
   <section class="card" id="loginPanel">
+
     <h2>🔐 OWNER LOGIN</h2>
 
-    <label>E-Mail</label>
-    <input id="email" type="email" placeholder="Owner E-Mail">
+    <input
+      id="email"
+      type="email"
+      placeholder="Owner E-Mail"
+    >
 
-    <label>Passwort</label>
-    <input id="password" type="password" placeholder="Passwort">
+    <input
+      id="password"
+      type="password"
+      placeholder="Owner Passwort"
+    >
 
-    <button onclick="adminLogin()">👑 EINLOGGEN</button>
+    <button onclick="adminLogin()">
+      👑 EINLOGGEN
+    </button>
 
-    <button class="secondary"
+    <button
+      class="secondary"
       onclick="location.href='index.html'">
       ZURÜCK ZUM LEADERBOARD
     </button>
+
   </section>
 
+
   <!-- ADMIN PANEL -->
+  <section
+    class="card"
+    id="adminPanel"
+    style="display:none"
+  >
 
-  <section id="adminPanel">
+    <h2>👑 OWNER DASHBOARD</h2>
 
-    <div class="card">
-      <h2>👑 OWNER AKTIV</h2>
-      <p class="green" id="status">Angemeldet</p>
-    </div>
+    <p class="green" id="status">
+      OWNER AKTIV
+    </p>
 
-    <!-- OVERVIEW -->
+    <hr>
 
-    <div class="card">
-      <h2>📊 GESAMTÜBERSICHT</h2>
+    <!-- ÜBERSICHT -->
+    <h2>📊 STATISTIKEN</h2>
 
-      <div class="stats">
-        <div class="stat">
-          Spieler
-          <b id="playerCount">0</b>
-        </div>
+    <div class="stats">
 
-        <div class="stat">
-          Gesamtumsatz
-          <b id="totalTurnover">0 Coins</b>
-        </div>
+      <div class="stat">
+        Spieler
+        <b id="playerCount">0</b>
       </div>
+
+      <div class="stat">
+        Gesamtumsatz
+        <b id="totalTurnover">0 Coins</b>
+      </div>
+
     </div>
 
-    <!-- PLAYERS -->
+    <hr>
 
-    <div class="card">
-      <h2>👥 SPIELERVERWALTUNG</h2>
-      <div id="players">Lade Spieler...</div>
+    <!-- SPIELER -->
+    <h2>👥 SPIELERVERWALTUNG</h2>
+
+    <div id="players">
+      Spieler werden geladen...
     </div>
 
-    <!-- ADD ROUND -->
+    <hr>
 
-    <div class="card">
-      <h2>➕ STATISTIK EINTRAGEN</h2>
+    <!-- STATISTIK EINTRAGEN -->
+    <h2>➕ STATISTIK EINTRAGEN</h2>
 
-      <label>Spieler auswählen</label>
-      <select id="roundUser"></select>
+    <label>Spieler auswählen</label>
 
-      <label>Spielname</label>
-      <input id="gameName"
-        type="text"
-        placeholder="z.B. Event oder Turnier">
+    <select id="roundUser">
+      <option value="">Spieler auswählen...</option>
+    </select>
 
-      <label>Einsatz</label>
-      <input id="stake"
-        type="number"
-        min="0"
-        placeholder="Einsatz in Coins">
+    <label>Spielname / Event</label>
 
-      <label>Netto-Profit / Verlust</label>
-      <input id="result"
-        type="number"
-        placeholder="z.B. 500 oder -200">
+    <input
+      id="gameName"
+      type="text"
+      placeholder="z.B. PvP Event"
+    >
 
-      <label>Ergebnis</label>
-      <select id="won">
-        <option value="true">Gewonnen</option>
-        <option value="false">Verloren</option>
-      </select>
+    <label>Einsatz</label>
 
-      <button id="saveRoundButton" onclick="saveRound()">
-        STATISTIK SPEICHERN
-      </button>
+    <input
+      id="stake"
+      type="number"
+      min="0"
+      placeholder="z.B. 500"
+    >
 
-      <button class="secondary" onclick="resetRoundForm()">
-        FORMULAR ZURÜCKSETZEN
-      </button>
+    <label>Profit / Verlust</label>
+
+    <input
+      id="result"
+      type="number"
+      placeholder="z.B. 250 oder -100"
+    >
+
+    <label>Ergebnis</label>
+
+    <select id="won">
+
+      <option value="true">
+        Gewonnen
+      </option>
+
+      <option value="false">
+        Verloren
+      </option>
+
+    </select>
+
+    <button
+      id="saveRoundButton"
+      onclick="saveRound()"
+    >
+      STATISTIK SPEICHERN
+    </button>
+
+    <button
+      class="secondary"
+      onclick="resetRoundForm()"
+    >
+      FORMULAR ZURÜCKSETZEN
+    </button>
+
+    <hr>
+
+    <!-- LETZTE EINTRÄGE -->
+    <h2>📜 STATISTIKVERLAUF</h2>
+
+    <div id="roundList">
+      Noch keine Einträge.
     </div>
 
-    <!-- HISTORY -->
+    <hr>
 
-    <div class="card">
-      <h2>📜 STATISTIK-HISTORIE</h2>
-      <p class="small">Die letzten 50 Einträge</p>
-      <div id="roundList">Lade Einträge...</div>
-    </div>
+    <!-- NAVIGATION -->
+    <button
+      class="secondary"
+      onclick="loadAdminData()"
+    >
+      🔄 DATEN AKTUALISIEREN
+    </button>
 
-    <!-- LOGOUT -->
+    <button
+      class="secondary"
+      onclick="location.href='index.html'"
+    >
+      ZURÜCK ZUM LEADERBOARD
+    </button>
 
-    <div class="card">
-      <button class="danger" onclick="adminLogout()">
-        ABMELDEN
-      </button>
-
-      <button class="secondary"
-        onclick="location.href='index.html'">
-        ZURÜCK ZUR WEBSITE
-      </button>
-    </div>
+    <button
+      class="danger"
+      onclick="adminLogout()"
+    >
+      ABMELDEN
+    </button>
 
   </section>
 
 </main>
 
 <footer>
-  KRAKESMP · OWNER PANEL · BLACK & GOLD
+  KRAKESMP · OWNER MANAGEMENT
 </footer>
 
 <script src="app.js"></script>
