@@ -590,3 +590,12 @@ body{background:
 .ticket-row{position:relative}
 .ticket-row:after{content:"";position:absolute;inset:0;border-radius:15px;pointer-events:none;box-shadow:inset 0 0 0 1px transparent;transition:.18s}
 .ticket-row:hover:after{box-shadow:inset 0 0 0 1px #ff3d5566}
+
+/* RP + market stock + maintenance controls */
+.market-stock{display:inline-grid;grid-template-columns:auto auto;align-items:center;column-gap:8px;margin:10px 0 4px;padding:8px 11px;border:1px solid #4d1b27;border-radius:12px;background:linear-gradient(145deg,#160a0e,#0c080b);width:max-content}
+.market-stock span{font-size:9px;letter-spacing:.18em;color:#8f737a;grid-row:1/3}
+.market-stock strong{font-size:18px;color:#fff;line-height:1}
+.market-stock small{font-size:9px;color:#8f737a}
+.leaderboard-global{margin-bottom:16px}
+.maintenance-actions{margin:16px 0;gap:10px}
+.maintenance-actions .btn{min-width:150px}
