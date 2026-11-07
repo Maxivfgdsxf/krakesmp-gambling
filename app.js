@@ -859,7 +859,7 @@ function wireReaction() {
   const save=async(slug,score,timeMs,won,metadata={})=>{
     const {data:game}=await db.from("minigames").select("id").eq("slug",slug).single();
     if(!game)return;
-    const {error}=await db.from("minigame_results").insert({minigame_id:game.id,user_id:currentUser.id,score:Math.max(0,Math.round(score||0)),time_ms:timeMs??null,won:Boolean(won),metadata});
+    const {error}=await db.rpc("economy_submit_minigame_result",{p_slug:slug,p_score:Math.max(0,Math.round(score||0)),p_time_ms:timeMs??null,p_won:Boolean(won),p_metadata:metadata||{}});
     if(error)toast("Ergebnis konnte nicht gespeichert werden: "+error.message,"error");
     else {
       let placement=null;
