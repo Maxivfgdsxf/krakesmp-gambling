@@ -24,7 +24,11 @@ const marketIcon=(s)=>{
 async function renderEconomy(){
  if(!currentUser){
    const publicLeaderboard=await call("economy_leaderboard");
-   const rows=(publicLeaderboard||[]).map((p,i)=>'<div class="eco-leader-row"><b>#'+(i+1)+'</b><strong>'+esc(p.display_name||p.username||"Spieler")+'</strong><span>'+money(p.balance)+'</span></div>').join("");
+   const rows=(publicLeaderboard||[]).map((p,i)=>{
+     const traderRank=i===0?"Ultimate Trader":i===1?"Master Trader":i===2?"Elite Trader":"Trader";
+     const medal=i===0?"🥇":i===1?"🥈":i===2?"🥉":"";
+     return '<div class="eco-leader-row"><b>'+medal+' #'+(i+1)+'</b><strong>'+esc(p.display_name||p.username||"Spieler")+' <span class="eco-trader-rank">'+traderRank+'</span></strong><span>'+money(p.balance)+'</span></div>';
+   }).join("");
    return pageHead("KRAKE RANGLISTE","KRAKE Wirtschaft","Die öffentliche Top-10-KC-Rangliste.")+
      '<section class="eco-panel card"><div class="section-head"><div><span class="eyebrow">TOP 10</span><h2>KC-Rangliste</h2><p class="muted">Die Rangliste ist öffentlich sichtbar. Für Börse, Handel und dein Portfolio kannst du dich anmelden.</p></div><button class="btn" data-route="login">Anmelden</button></div><div class="eco-leaderboard">'+rows+'</div></section>';
  }
