@@ -495,6 +495,12 @@ function wirePage(route) {
   if(route==="settings")wireSettings();
   if(route==="admin")wireAdmin();
   if(route==="market")wireMarket();
+  if(route==="leaderboards"){
+    document.querySelectorAll("[data-leaderboard-game]").forEach(button=>button.addEventListener("click",()=>{
+      document.querySelectorAll("[data-leaderboard-game]").forEach(b=>b.classList.toggle("active",b===button));
+      document.querySelectorAll("[data-board]").forEach(panel=>panel.hidden=panel.dataset.board!==button.dataset.leaderboardGame);
+    }));
+  }
 }
 async function logout(){await db.auth.signOut();await refreshAuth();go("home");await renderPage();toast("Du wurdest abgemeldet.");}
 
