@@ -220,75 +220,35 @@ function pageHead(eyebrow,title,desc="") {
 function empty(message) { return '<div class="empty">'+esc(message)+'</div>'; }
 
 async function renderHome() {
-  const [events,announcements,leaders,chats,marketItems] = await Promise.all([
+  const [events,announcements,chats,marketItems]=await Promise.all([
     db.from("events").select("name,description,starts_at,ends_at").eq("active",true).limit(1),
     db.from("announcements").select("title,message,created_at").eq("active",true).order("created_at",{ascending:false}).limit(2),
-    db.from("player_statistics").select("user_id,rating,wins,games_played,total_score,profiles(username,display_name,verified)").order("rating",{ascending:false}).limit(3),
     db.from("chat_messages").select("id,user_id,message,created_at,profiles(username,display_name,verified)").is("deleted_at",null).order("created_at",{ascending:false}).limit(3),
-    db.from("market_items").select("id,symbol,name").eq("active",true).order("symbol").limit(3),
+    db.from("market_items").select("id,symbol,name").eq("active",true).order("symbol").limit(3)
   ]);
-  for (const result of [events,announcements,leaders,chats,marketItems]) {
-    if(result?.error) console.warn("Home section:",result.error.message);
-  }
-  const event=events.data?.[0];
-  const hello=profile?.display_name||profile?.username||"Spieler";
+  for(const result of [events,announcements,chats,marketItems])if(result?.error)console.warn("Home section:",result.error.message);
+  let topRP=[];
+  try{topRP=globalLeaderboardRows(await fetchLeaderboardSnapshot()).slice(0,3);}
+  catch(error){console.warn("Home RP leaderboard unavailable:",error.message);}
+  const event=events.data?.[0],hello=profile?.display_name||profile?.username||"Spieler";
   const announcementHtml=(announcements.data??[]).map(a=>'<article class="list-item"><div class="item-title">'+esc(a.title)+'</div><p>'+esc(a.message)+'</p><div class="inline-meta">'+dateTime(a.created_at)+'</div></article>').join("");
-  const leaderHtml=(leaders.data??[]).map((p,i)=>'<div class="leader-row"><span class="leader-rank">'+(i+1)+'</span><span class="leader-avatar">♟</span><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong><span>'+number(p.rating)+' RP</span></div>').join("");
+  const leaderHtml=topRP.map((p,i)=>'<div class="leader-row"><span class="leader-rank">'+(i+1)+'</span><span class="leader-avatar">♟</span><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong><span>'+number(p.totalRP)+' RP</span></div>').join("");
   const chatHtml=(chats.data??[]).map(m=>'<div class="home-chat-row"><strong>'+esc(m.profiles?.display_name||m.profiles?.username||"Player")+'</strong><span>'+dateTime(m.created_at)+'</span><p>'+esc(m.message)+'</p></div>').join("");
   const marketHtml=(marketItems.data??[]).map(m=>'<div class="market-mini-row"><span class="market-mini-icon">◆</span><div><strong>'+esc(m.name)+'</strong><small>'+esc(m.symbol)+'</small></div></div>').join("");
-  return `
-    <section class="home-hero">
-      <div class="hero-copy">
-        <div class="hero-welcome">Willkommen auf</div>
-        <h1><span class="red-word">KRAKE</span> <span class="metal-word">SMP</span></h1>
-        <p class="home-tagline">Deine Community. Dein <strong>SMP.</strong> Deine Welt.</p>
-        <p class="home-description">Ein Ort für deine Crew: Community-Chat, Minigames, Rankings, Events und Services – alles vereint in deinem KRAKE SMP Portal.</p>
-        <div class="action-row">
-          <button class="btn" data-route="chat">Community öffnen <span>→</span></button>
-          <button class="btn secondary" data-route="leaderboards">Rankings ansehen</button>
-        </div>
-        ${currentUser?'<p class="muted home-greeting">Willkommen zurück, <strong>'+esc(hello)+'</strong>.'+'</p>':'<p class="muted home-greeting">Melde dich an und werde Teil der Community.</p>'}
-      </div>
-      <div class="hero-crest-panel">
-        <div class="hero-crest-glow"></div>
-        ${KRAKEN_CREST}
-        <div class="hero-crest-caption"><span class="status-dot"></span> KRAKE COMMUNITY HUB</div>
-      </div>
-      <div class="hero-quick-stats">
-        <a href="#chat"><span class="quick-stat-icon">◉</span><strong>Community Chat</strong><small>Live-Unterhaltungen</small></a>
-        <a href="#minigames"><span class="quick-stat-icon">⚔</span><strong>Minigames</strong><small>Skill & Challenges</small></a>
-        <a href="#leaderboards"><span class="quick-stat-icon">♛</span><strong>Leaderboard</strong><small>Spieler-Rankings</small></a>
-        
-      </div>
-    </section>
-    <section class="home-dashboard-grid">
-      <article class="card home-leader-card">
-        <div class="home-card-head"><div><span class="eyebrow">COMPETITIVE</span><h2>Top 3 Leaderboard</h2></div><a href="#leaderboards">Alle ansehen →</a></div>
-        <div class="leader-list">${leaderHtml||empty("Noch keine Spieler-Rankings vorhanden.")}</div>
-      </article>
-      <article class="card home-event-card">
-        <div class="home-card-head"><div><span class="eyebrow">SEASONAL</span><h2>Event</h2></div><a href="#events">Alle Events →</a></div>
-        <div class="event-visual"><div class="event-sigil">✦</div><span class="pill ${event?"red":""}">${event?"AKTIV":"YEAR ROUND"}</span></div>
-        <h3>${esc(event?.name||"KRAKE Community")}</h3>
-        <p>${esc(event?.description||"Hier erscheinen die nächsten Community-Events und SMP-Specials.")}</p>
-        <button class="btn secondary small" data-route="events">Mehr erfahren →</button>
-      </article>
-      <article class="card home-chat-card">
-        <div class="home-card-head"><div><span class="eyebrow">COMMUNITY</span><h2>Community Chat</h2></div><a href="#chat">Öffnen →</a></div>
-        <div class="home-chat-list">${chatHtml||empty("Noch keine Nachrichten im Chat.")}</div>
-        <button class="btn small" data-route="chat">Zum Chat senden</button>
-      </article>
-      <article class="card home-market-card">
-        <div class="home-card-head"><div><span class="eyebrow">VIRTUAL ECONOMY</span><h2>Krake Market</h2></div><a href="#market">Zum Market →</a></div>
-        <div class="market-mini-list">${marketHtml||empty("Noch keine Market-Assets vorhanden.")}</div>
-      </article>
-      <article class="card home-news-card">
-        <div class="home-card-head"><div><span class="eyebrow">UPDATES</span><h2>Community News</h2></div></div>
-        <div class="list">${announcementHtml||empty("Noch keine Neuigkeiten veröffentlicht.")}</div>
-      </article>
-    </section>
-  `;
+  return pageHead("COMMUNITY","Willkommen bei KRAKE SMP","Deine Community-Zentrale für Chat, Minigames, Rankings, Events und Ingame-Services.")+
+    '<section class="home-hero"><div class="hero-copy"><div class="hero-welcome">Willkommen auf</div><h1><span class="red-word">KRAKE</span> <span class="metal-word">SMP</span></h1>'+
+    '<p class="home-tagline">Deine Community. Dein <strong>SMP.</strong> Deine Welt.</p><p class="home-description">Ein Ort für deine Crew: Community-Chat, Minigames, Rankings, Events und Services – alles vereint in deinem KRAKE SMP Portal.</p>'+
+    '<div class="action-row"><button class="btn" data-route="chat">Community öffnen <span>→</span></button><button class="btn secondary" data-route="leaderboards">Rankings ansehen</button></div>'+
+    (currentUser?'<p class="muted home-greeting">Willkommen zurück, <strong>'+esc(hello)+'</strong>.</p>':'<p class="muted home-greeting">Melde dich an und werde Teil der Community.</p>')+
+    '</div><div class="hero-crest-panel"><div class="hero-crest-glow"></div>'+KRAKEN_CREST+'<div class="hero-crest-caption"><span class="status-dot"></span> KRAKE COMMUNITY HUB</div></div>'+
+    '<div class="hero-quick-stats"><a href="#chat"><span class="quick-stat-icon">◉</span><strong>Community Chat</strong><small>Live-Unterhaltungen</small></a><a href="#minigames"><span class="quick-stat-icon">⚔</span><strong>Minigames</strong><small>Skill & Challenges</small></a><a href="#leaderboards"><span class="quick-stat-icon">♛</span><strong>Leaderboard</strong><small>Spieler-Rankings</small></a></div></section>'+
+    '<section class="home-dashboard-grid"><article class="card home-leader-card"><div class="home-card-head"><div><span class="eyebrow">COMPETITIVE</span><h2>Top 3 RP Ranking</h2></div><a href="#leaderboards">Alle ansehen →</a></div><div class="leader-list">'+(leaderHtml||empty("Noch keine RP-Platzierungen vorhanden."))+'</div></article>'+
+    '<article class="card home-event-card"><div class="home-card-head"><div><span class="eyebrow">SEASONAL</span><h2>Event</h2></div><a href="#events">Alle Events →</a></div><div class="event-visual"><div class="event-sigil">✦</div><span class="pill '+(event?"red":"")+'">'+(event?"AKTIV":"YEAR ROUND")+'</span></div><h3>'+esc(event?.name||"KRAKE Community")+'</h3><p>'+esc(event?.description||"Hier erscheinen die nächsten Community-Events und SMP-Specials.")+'</p><button class="btn secondary small" data-route="events">Mehr erfahren →</button></article>'+
+    '<article class="card home-chat-card"><div class="home-card-head"><div><span class="eyebrow">COMMUNITY</span><h2>Community Chat</h2></div><a href="#chat">Öffnen →</a></div><div class="home-chat-list">'+(chatHtml||empty("Noch keine Nachrichten im Chat."))+'</div><button class="btn small" data-route="chat">Zum Chat senden</button></article>'+
+    '<article class="card home-market-card"><div class="home-card-head"><div><span class="eyebrow">INGAME ITEMS</span><h2>Krake Market</h2></div><a href="#market">Zum Market →</a></div><div class="market-mini-list">'+(marketHtml||empty("Noch keine Market-Assets vorhanden."))+'</div></article>'+
+    '<article class="card home-news-card"><div class="home-card-head"><div><span class="eyebrow">UPDATES</span><h2>Community News</h2></div></div><div class="list">'+(announcementHtml||empty("Noch keine Neuigkeiten veröffentlicht."))+'</div></article></section>';
 }
+
 async function renderLogin() {
   if (currentUser) return '<div class="card auth-card"><div class="eyebrow">ACCOUNT</div><h2>Du bist angemeldet</h2><p class="muted">Angemeldet als '+esc(profile?.username||"Player")+'.</p><button class="btn" data-route="profile">Zum Profil</button></div>';
   return `
