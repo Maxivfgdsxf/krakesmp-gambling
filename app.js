@@ -100,12 +100,12 @@ function shell(content) {
   const nav = NAV.map(([route,icon,label,group]) =>
     '<button class="nav-link '+(currentRoute===route?'active':'')+'" data-route="'+route+'"><span class="nav-icon">'+icon+'</span>'+label+'</button>'
   ).join("");
-  root.innerHTML = \`
+  root.innerHTML = `
     <header class="topbar">
       <button class="icon-btn" id="menu-open" aria-label="Menü öffnen">☰</button>
       <a class="brand" href="#home"><span class="brand-logo">♛</span><span>KRAKE SMP</span></a>
       <div class="top-actions">
-        <span class="account-chip">\${esc(display)}</span>
+        <span class="account-chip">${esc(display)}</span>
         <button class="icon-btn" id="account-open" aria-label="Profil öffnen">◎</button>
       </div>
     </header>
@@ -115,20 +115,20 @@ function shell(content) {
         <div class="drawer-head"><span class="drawer-title">KRAKE NAVIGATION</span><button class="icon-btn" id="menu-close" aria-label="Menü schließen">×</button></div>
         <nav class="nav-list">
           <div class="nav-label">Community</div>
-          \${nav.split('</button>').slice(0,5).map(x=>x+'</button>').join("")}
+          ${nav.split('</button>').slice(0,5).map(x=>x+'</button>').join("")}
           <div class="nav-label">Services</div>
-          \${nav.split('</button>').slice(5,8).map(x=>x+'</button>').join("")}
+          ${nav.split('</button>').slice(5,8).map(x=>x+'</button>').join("")}
           <div class="nav-label">Account</div>
-          \${nav.split('</button>').slice(8).map(x=>x+'</button>').join("")}
-          \${isAdmin()?'<div class="nav-label">Administration</div><button class="nav-link '+(currentRoute==="admin"?'active':'')+'" data-route="admin"><span class="nav-icon">✦</span>Admin Panel</button>':""}
-          <button class="nav-link" id="auth-nav"><span class="nav-icon">\${currentUser?"↪":"→"}</span>\${currentUser?"Abmelden":"Anmelden"}</button>
+          ${nav.split('</button>').slice(8).map(x=>x+'</button>').join("")}
+          ${isAdmin()?'<div class="nav-label">Administration</div><button class="nav-link '+(currentRoute==="admin"?'active':'')+'" data-route="admin"><span class="nav-icon">✦</span>Admin Panel</button>':""}
+          <button class="nav-link" id="auth-nav"><span class="nav-icon">${currentUser?"↪":"→"}</span>${currentUser?"Abmelden":"Anmelden"}</button>
         </nav>
       </aside>
     </div>
-    <main class="page-wrap" id="page-content">\${content}</main>
+    <main class="page-wrap" id="page-content">${content}</main>
     <footer class="site-footer">KRAKE SMP · COMMUNITY PORTAL · BUILT FOR THE COMMUNITY</footer>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
-  \`;
+  `;
   $("menu-open").onclick=openDrawer;
   $("menu-close").onclick=closeDrawer;
   $("drawer-back").onclick=closeDrawer;
@@ -153,7 +153,7 @@ async function renderHome() {
   const event = events.data?.[0];
   const hello = profile?.display_name || profile?.username || "Spieler";
   const announcementHtml = (announcements.data??[]).map(a=>'<article class="list-item"><div class="item-title">'+esc(a.title)+'</div><p>'+esc(a.message)+'</p><div class="inline-meta">'+dateTime(a.created_at)+'</div></article>').join("");
-  return \`
+  return `
     <section class="hero">
       <div class="hero-copy">
         <div class="eyebrow">KRAKE SMP · COMMUNITY PORTAL</div>
@@ -163,7 +163,7 @@ async function renderHome() {
           <button class="btn" data-route="chat">Zum Community-Chat <span>→</span></button>
           <button class="btn secondary" data-route="leaderboards">Rankings ansehen</button>
         </div>
-        \${currentUser?'<p class="muted">Willkommen zurück, <strong>'+esc(hello)+'</strong>.</p>':'<p class="muted">Neu hier? Erstelle deinen Community-Account in wenigen Schritten.</p>'}
+        ${currentUser?'<p class="muted">Willkommen zurück, <strong>'+esc(hello)+'</strong>.</p>':'<p class="muted">Neu hier? Erstelle deinen Community-Account in wenigen Schritten.</p>'}
       </div>
       <aside class="panel hero-panel">
         <div class="status-line"><span class="status-dot"></span> PORTAL BEREIT</div>
@@ -173,27 +173,27 @@ async function renderHome() {
       </aside>
     </section>
     <section class="section grid four">
-      <div class="card stat-card"><div class="stat-label">Deine Games</div><div class="stat-number">\${number(stats.data?.games_played)}</div><div class="form-note">gespielte Challenges</div></div>
-      <div class="card stat-card"><div class="stat-label">Deine Wins</div><div class="stat-number">\${number(stats.data?.wins)}</div><div class="form-note">gewonnene Spiele</div></div>
-      <div class="card stat-card"><div class="stat-label">Rating</div><div class="stat-number">\${number(stats.data?.rating ?? (currentUser?1000:"—"))}</div><div class="form-note">Community-Rating</div></div>
-      <div class="card stat-card"><div class="stat-label">Account</div><div class="stat-number">\${currentUser?"Aktiv":"Gast"}</div><div class="form-note">\${profile?.verified?"Minecraft verifiziert":"Minecraft nicht verifiziert"}</div></div>
+      <div class="card stat-card"><div class="stat-label">Deine Games</div><div class="stat-number">${number(stats.data?.games_played)}</div><div class="form-note">gespielte Challenges</div></div>
+      <div class="card stat-card"><div class="stat-label">Deine Wins</div><div class="stat-number">${number(stats.data?.wins)}</div><div class="form-note">gewonnene Spiele</div></div>
+      <div class="card stat-card"><div class="stat-label">Rating</div><div class="stat-number">${number(stats.data?.rating ?? (currentUser?1000:"—"))}</div><div class="form-note">Community-Rating</div></div>
+      <div class="card stat-card"><div class="stat-label">Account</div><div class="stat-number">${currentUser?"Aktiv":"Gast"}</div><div class="form-note">${profile?.verified?"Minecraft verifiziert":"Minecraft nicht verifiziert"}</div></div>
     </section>
     <section class="section grid two">
-      <div class="card"><div class="section-head"><div><div class="eyebrow">SEASONAL</div><h2>Aktuelles Event</h2></div><span class="pill \${event?"red":""}">\${event?"LIVE":"YEAR ROUND"}</span></div>
-        <h3>\${esc(event?.name||"KRAKE Community")}</h3><p>\${esc(event?.description||"Hier erscheinen aktuelle Server-Specials, Community-Events und saisonale Aktionen. Das Grunddesign bleibt das ganze Jahr über aktiv.")}</p>
+      <div class="card"><div class="section-head"><div><div class="eyebrow">SEASONAL</div><h2>Aktuelles Event</h2></div><span class="pill ${event?"red":""}">${event?"LIVE":"YEAR ROUND"}</span></div>
+        <h3>${esc(event?.name||"KRAKE Community")}</h3><p>${esc(event?.description||"Hier erscheinen aktuelle Server-Specials, Community-Events und saisonale Aktionen. Das Grunddesign bleibt das ganze Jahr über aktiv.")}</p>
         <button class="btn secondary small" data-route="events">Alle Events</button>
       </div>
       <div class="card"><div class="section-head"><div><div class="eyebrow">PLAYER SERVICES</div><h2>Community Services</h2></div><span class="pill">V1</span></div>
         <div class="list"><div class="item-head"><span>🏗 Building Service</span><button class="btn ghost small" data-route="building">Öffnen</button></div><div class="item-head"><span>✧ Team bewerben</span><button class="btn ghost small" data-route="applications">Öffnen</button></div><div class="item-head"><span>⚙ Minecraft verbinden</span><button class="btn ghost small" data-route="settings">Öffnen</button></div></div>
       </div>
     </section>
-    \${announcementHtml?'<section class="section"><div class="section-head"><div><div class="eyebrow">NEWS</div><h2>Neuigkeiten</h2></div></div><div class="list">'+announcementHtml+'</div></section>':""}
-  \`;
+    ${announcementHtml?'<section class="section"><div class="section-head"><div><div class="eyebrow">NEWS</div><h2>Neuigkeiten</h2></div></div><div class="list">'+announcementHtml+'</div></section>':""}
+  `;
 }
 
 async function renderLogin() {
   if (currentUser) return '<div class="card auth-card"><div class="eyebrow">ACCOUNT</div><h2>Du bist angemeldet</h2><p class="muted">Angemeldet als '+esc(profile?.username||"Player")+'.</p><button class="btn" data-route="profile">Zum Profil</button></div>';
-  return \`
+  return `
     <section class="card auth-card">
       <div class="eyebrow">KRAKE ACCOUNT</div><h2 id="auth-title">Anmelden</h2>
       <p class="muted">Benutzername und Passwort. Kein E-Mail-Postfach und keine Zwei-Faktor-Pflicht.</p>
@@ -206,7 +206,7 @@ async function renderLogin() {
       </form>
       <div class="form-note" id="auth-message" aria-live="polite">Passwörter müssen mindestens 12 Zeichen mit Groß-/Kleinbuchstaben, Zahl und Sonderzeichen enthalten.</div>
     </section>
-  \`;
+  `;
 }
 
 async function renderChat() {
@@ -215,13 +215,13 @@ async function renderChat() {
     .is("deleted_at",null).order("created_at",{ascending:true}).limit(100);
   if (messages.error) throw messages.error;
   lastChatMessages = messages.data??[];
-  const items = lastChatMessages.map(m=>\`
+  const items = lastChatMessages.map(m=>`
     <article class="chat-message">
-      <div><span class="who">\${esc(m.profiles?.username||"Player")}\${badge(m.profiles?.verified)}</span><span class="when">\${dateTime(m.created_at)}</span>
-      \${currentUser && currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':""}</div>
-      <p>\${esc(m.message)}</p>
+      <div><span class="who">${esc(m.profiles?.username||"Player")}${badge(m.profiles?.verified)}</span><span class="when">${dateTime(m.created_at)}</span>
+      ${currentUser && currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':""}</div>
+      <p>${esc(m.message)}</p>
     </article>
-  \`).join("");
+  `).join("");
   return pageHead("COMMUNITY","Globaler Chat","Schreib mit der KRAKE Community. Chat-Regeln gelten für alle Mitglieder.")+
     '<section class="card"><div class="chat-window" id="chat-window">'+(items||empty("Noch keine Nachrichten. Starte die Unterhaltung!"))+'</div>'+
     (currentUser?'<form id="chat-form" class="chat-compose"><input class="input" id="chat-input" maxlength="2000" placeholder="Nachricht schreiben …" required><button class="btn">Senden</button></form>':'<div class="notice" style="margin-top:12px">Zum Schreiben bitte <button class="btn small" data-route="login">anmelden</button>.</div>')+
