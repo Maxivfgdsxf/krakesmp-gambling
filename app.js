@@ -605,40 +605,74 @@ function wireChat() {
   $("chat-form")?.addEventListener("submit",async event=>{
     event.preventDefault();
     if(!currentUser){toast("Bitte zuerst anmelden.","error");return;}
-    const input=$("chat-input");const message=input.value.trim();if(!message)return;
-    const submit=event.currentTarget.querySelector("button[type=submit],button:not([type])");
+    const input=$("chat-input"),message=input?.value.trim();
+    if(!message)return;
+    const submit=event.currentTarget.querySelector("button[type=submit]");
     if(submit)submit.disabled=true;
-    const {error}=await db.from("chat_messages").insert({user_id:currentUser.id,message});
-    if(submit)submit.disabled=false;
-    if(error){
+    try{
+      const {error}=await db.from("chat_messages").insert({user_id:currentUser.id,message});
+      if(error)throw error;
+      input.value="";
+      await loadChatMessages();
+    }catch(error){
       console.error("Chat send failed",error);
       toast("Chat konnte nicht gesendet werden: "+(error.message||"Unbekannter Fehler"),"error");
-      return;
-    }
-    input.value="";
-    await loadChatMessages().catch(err=>console.error("Chat refresh failed",err));
+    }finally{if(submit)submit.disabled=false;}
   });
-  $("chat-window")?.addEventListener("click",async event=>{
+
+  const chatWindow=$("chat-window");
+  chatWindow?.addEventListener("click",async event=>{
     const mod=event.target.closest("[data-chat-delete],[data-chat-mute],[data-chat-ban]");
     if(mod&&isAdmin()){
+      if(mod.disabled)return;
       try{
-        if(mod.dataset.chatDelete){if(!await showConfirm("Nachricht löschen?","Diese Nachricht wird für den Chat ausgeblendet.","Löschen"))return;await callAdmin("delete_chat_message",{message_id:Number(mod.dataset.chatDelete)});toast("Nachricht gelöscht.","success");await loadChatMessages();return;}
+        if(mod.dataset.chatDelete){
+          const messageId=Number(mod.dataset.chatDelete);
+          if(!Number.isSafeInteger(messageId)||messageId<=0)throw new Error("Ungültige Nachrichten-ID.");
+          mod.disabled=true;
+          await callAdmin("delete_chat_message",{message_id:messageId});
+          await loadChatMessages();
+          toast("Nachricht gelöscht.","success");
+          return;
+        }
         const uid=mod.dataset.chatMute||mod.dataset.chatBan;
-        if(mod.dataset.chatMute){if(!await showConfirm("Timeout setzen?","Der Benutzer kann für die gewählte Zeit nicht schreiben.","Timeout setzen"))return;const hours=Number(prompt("Timeout in Stunden?","1"));if(!Number.isFinite(hours)||hours<=0)return;await callAdmin("mute",{user_id:uid,reason:"Chat-Moderation",expires_at:new Date(Date.now()+hours*3600000).toISOString()});toast("Timeout gesetzt.","success");await loadChatMessages();return;}
-        if(!await showConfirm("Benutzer sperren?","Der Benutzer wird für den Chat gesperrt.","Sperren"))return;await callAdmin("ban",{user_id:uid,reason:"Chat-Moderation",expires_at:null});toast("Benutzer gesperrt.","success");await loadChatMessages();return;
-      }catch(error){toast(error.message||"Moderationsaktion fehlgeschlagen.","error");return;}
+        if(mod.dataset.chatMute){
+          if(!await showConfirm("Timeout setzen?","Der Benutzer kann für die gewählte Zeit nicht schreiben.","Timeout setzen"))return;
+          const hours=Number(prompt("Timeout in Stunden?","1"));
+          if(!Number.isFinite(hours)||hours<=0)return;
+          mod.disabled=true;
+          await callAdmin("mute",{user_id:uid,reason:"Chat-Moderation",expires_at:new Date(Date.now()+hours*3600000).toISOString()});
+          toast("Timeout gesetzt.","success");
+          await loadChatMessages();
+          return;
+        }
+        if(!await showConfirm("Benutzer sperren?","Der Benutzer wird für den Chat gesperrt.","Sperren"))return;
+        mod.disabled=true;
+        await callAdmin("ban",{user_id:uid,reason:"Chat-Moderation",expires_at:null});
+        toast("Benutzer gesperrt.","success");
+        await loadChatMessages();
+        return;
+      }catch(error){
+        if(mod.isConnected)mod.disabled=false;
+        toast(error.message||"Moderationsaktion fehlgeschlagen.","error");
+        return;
+      }
     }
 
-    const button=event.target.closest("[data-report]");if(!button||!currentUser)return;
-    const reason=prompt("Warum möchtest du diese Nachricht melden?");if(!reason)return;
+    const button=event.target.closest("[data-report]");
+    if(!button||!currentUser)return;
+    const reason=prompt("Warum möchtest du diese Nachricht melden?");
+    if(!reason)return;
     const {error}=await db.from("chat_reports").insert({message_id:Number(button.dataset.report),reporter_user_id:currentUser.id,reason});
     toast(error?error.message:"Nachricht wurde gemeldet.",error?"error":"success");
   });
+
   activeChatChannel=db.channel("krake-global-chat")
     .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages"},()=>loadChatMessages().catch(console.error))
-    .subscribe((status)=>{ if(status==="CHANNEL_ERROR"||status==="TIMED_OUT") console.warn("Chat realtime:",status); });
+    .subscribe((status)=>{if(status==="CHANNEL_ERROR"||status==="TIMED_OUT")console.warn("Chat realtime:",status);});
   chatPollTimer=window.setInterval(()=>loadChatMessages().catch(console.error),5000);
 }
+
 function wireReaction() {
   const stage=$("game-stage"), area=$("game-area");
   if(!stage||!area)return;
