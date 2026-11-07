@@ -6,12 +6,20 @@
   <meta name="theme-color" content="#08090d">
   <meta name="description" content="KRAKE SMP — dein Community-Portal für Chat, Rankings, Events und Services.">
   <title>KRAKE SMP — Community Portal</title>
-  <link rel="stylesheet" href="styles.css?v=20261107-redesign3">
+  <link rel="stylesheet" href="styles.css?v=20261107-redesign4">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
   <script src="config.js"></script>
-  <script defer src="app.js?v=20261107-redesign4"></script>
+  <script defer src="app.js?v=20261107-redesign5"></script>
 </head>
 <body>
   <div id="app"><div class="boot"><span class="kraken-mark">♛</span><p>KRAKE SMP wird geladen …</p></div></div>
+  <script id="krake-boot-watchdog">
+    window.setTimeout(function(){
+      var app=document.getElementById("app");
+      if(app && app.querySelector(".boot")){
+        app.innerHTML='<section style="max-width:720px;margin:12vh auto;padding:28px;border:1px solid #5b2430;border-radius:20px;background:#0d080b;color:#fff;font-family:system-ui,sans-serif"><div style="letter-spacing:.18em;color:#ff5365;font-size:11px">KRAKE SMP · SYSTEM</div><h1 style="margin:10px 0">Die Seite konnte nicht gestartet werden.</h1><p style="color:#a9959b">Der Frontend-Loader wurde nicht ausgeführt. Bitte einmal neu laden.</p><button onclick="location.reload()" style="padding:12px 18px;border:1px solid #ff5365;border-radius:12px;background:#190b10;color:#fff;cursor:pointer">Neu laden</button></section>';
+      }
+    }, 3500);
+  </script>
 </body>
 </html>
