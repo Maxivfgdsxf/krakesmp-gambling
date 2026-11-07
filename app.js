@@ -578,7 +578,7 @@ async function renderAdmin() {
   if(!isAdmin())return pageHead("RESTRICTED","Kein Zugriff","Dein Account besitzt keine Admin-Berechtigung.")+'<div class="card">'+empty("Das Admin Panel ist serverseitig geschützt.")+'</div>';
   return pageHead("CONTROL CENTER","Admin Panel","Serverseitig abgesicherte Verwaltung und Audit-Protokoll.")+
     '<section class="card"><div class="admin-tabs">'+[
-      ["overview","Dashboard"],["players","Players"],["bans","Bans"],["verifications","Minecraft"],["applications","Bewerbungen"],["building","Building"],["market","Market"],["market_tickets","Market Tickets"],["chat","Chat Reports"],["roles","Rollen"],["audit","Audit Logs"],["maintenance","Maintenance"],["console","Admin Console"]
+      ["overview","Dashboard"],["economy","KC-Wirtschaft"],["players","Players"],["bans","Bans"],["verifications","Minecraft"],["applications","Bewerbungen"],["building","Building"],["market","Market"],["market_tickets","Market Tickets"],["chat","Chat Reports"],["roles","Rollen"],["audit","Audit Logs"],["maintenance","Maintenance"],["console","Admin Console"]
     ].map(([k,v])=>'<button data-admin-tab="'+k+'" class="'+(adminSection===k?"active":"")+'">'+v+'</button>').join("")+'</div><div id="admin-content" class="admin-layout">'+empty("Bereich wird geladen …")+'</div></section>';
 }
 
@@ -1003,6 +1003,9 @@ async function loadAdminSection(section) {
       if(verifyIds.length){const {data:vp}=await db.from("profiles").select("id,username,display_name").in("id",verifyIds);verifyProfiles=new Map((vp??[]).map(p=>[p.id,p]));}
       const pendingCards=(pendingResult.data??[]).map(v=>{const p=verifyProfiles.get(v.user_id);return '<article class="admin-request"><div><strong>'+esc(p?.display_name||p?.username||"Player")+'</strong><span class="pill red">PENDING</span></div><p>🎮 '+esc(v.minecraft_name)+'</p><small>'+dateTime(v.requested_at)+'</small><div class="action-group"><button class="btn small" data-verify="yes" data-id="'+v.id+'">✓ Annehmen</button><button class="btn small danger" data-verify="no" data-id="'+v.id+'">Ablehnen</button></div></article>';}).join("");
       node.innerHTML='<div class="grid four"><div class="card stat-card"><div class="stat-label">Spieler</div><div class="stat-number">'+players+'</div></div><div class="card stat-card"><div class="stat-label">Bans</div><div class="stat-number">'+bans+'</div></div><div class="card stat-card"><div class="stat-label">Verifizierungen</div><div class="stat-number">'+verifications+'</div></div><div class="card stat-card"><div class="stat-label">Reports</div><div class="stat-number">'+reports+'</div></div></div><div class="admin-overview-grid"><div class="card"><h2>Admin Control</h2><p class="muted">Serverseitige Aktionen, Audit Logs und Moderation.</p><span class="pill green">RLS aktiv</span> <span class="pill green">RBAC aktiv</span> <span class="pill green">Audit aktiv</span></div><div class="card verification-request-panel"><div class="item-head"><div><div class="eyebrow">QUICK ACTION</div><h2>Verifizierungs-Anfragen</h2></div><button class="btn small secondary" data-admin-tab="verifications">Alle öffnen</button></div><div class="admin-request-list">'+(pendingCards||'<div class="empty">Keine offenen Anfragen.</div>')+'</div></div></div>';
+    } else if(section==="economy"){
+      const {data:users,error}=await db.from("profiles").select("id,username,display_name").order("username").limit(500);if(error)throw error;
+      node.innerHTML='<div class="card"><h2>KC verwalten</h2><p class="muted">Gutschriften sind auf 1.000.000 KC pro Aktion begrenzt und werden mit Admin, Zielspieler und Grund protokolliert.</p><form id="economy-grant-form" class="form-grid"><div class="field"><label>Spieler</label><select name="user_id" required>'+(users||[]).map(u=>'<option value="'+u.id+'">'+esc(u.display_name||u.username)+' (@'+esc(u.username)+')</option>').join("")+'</select></div><div class="field"><label>KC-Betrag</label><input class="input" name="amount" type="number" min="1" max="1000000" step="1" required placeholder="z. B. 5000"></div><div class="field"><label>Grund (Pflicht)</label><input class="input" name="reason" minlength="3" maxlength="200" required placeholder="Event-Gewinn, Support-Ausgleich …"></div><button class="btn">KC sicher gutschreiben</button></form><div class="notice">Nur Accounts mit der serverseitigen Berechtigung economy.manage können diese Aktion ausführen. Browser-Konsole allein reicht nicht.</div></div>';
     } else if(section==="players"){
       const {data,error}=await db.from("profiles").select("id,username,display_name,verified,created_at").order("created_at",{ascending:false}).limit(100);if(error)throw error;
       const rows=(data??[]).map(p=>'<tr><td><strong>'+esc(p.display_name||p.username)+badge(p.verified)+'</strong></td><td>'+esc(p.username)+'</td><td>'+dateTime(p.created_at)+'</td><td><button class="btn small danger" data-player-action="ban" data-user="'+p.id+'">Bannen</button> <button class="btn small secondary" data-player-action="mute" data-user="'+p.id+'">Muten</button> <button class="btn small ghost" data-player-action="password" data-user="'+p.id+'">Passwort reset</button></td></tr>').join("");
@@ -1075,6 +1078,14 @@ async function loadAdminSection(section) {
 }
 function wireAdminSection(section) {
   const node=$("admin-content");if(!node)return;
+  $("economy-grant-form")?.addEventListener("submit",async e=>{
+    e.preventDefault();const form=e.currentTarget,fd=new FormData(form),amount=Number(fd.get("amount"));
+    if(!Number.isSafeInteger(amount)||amount<1||amount>1000000){toast("KC-Betrag ungültig.","error");return;}
+    const button=form.querySelector("button[type=submit],button:not([type])");if(button)button.disabled=true;
+    try{const {data,error}=await db.rpc("economy_admin_grant",{p_user_id:String(fd.get("user_id")),p_amount:amount,p_reason:String(fd.get("reason")||"").trim()});if(error)throw error;toast(amount.toLocaleString("de-DE")+" KC gutgeschrieben. Neuer Kontostand: "+Number(data.balance).toLocaleString("de-DE")+" KC","success");form.reset();}
+    catch(error){toast(error.message||"KC-Gutschrift fehlgeschlagen.","error");}
+    finally{if(button)button.disabled=false;}
+  });
   node.onclick=async(event)=>{
     const ticket=event.target.closest("[data-ticket-open]");
     if(ticket){openMarketTicket(Number(ticket.dataset.ticketOpen));return;}
