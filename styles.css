@@ -1160,3 +1160,45 @@ body{background:radial-gradient(circle at 50% -12%,#3a0915 0,#14070c 30%,#080609
 .eco-item-icon{text-shadow:2px 2px 0 rgba(0,0,0,.65);transition:transform .18s ease,box-shadow .18s ease}
 .eco-stock:hover .eco-item-icon{transform:translateY(-1px) scale(1.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),0 0 18px rgba(255,45,70,.16)}
 @media(prefers-reduced-motion:reduce){.admin-nav-symbol .admin-aura:after,.admin-nav-symbol .admin-aura:before,.admin-nav-symbol .admin-aura i{animation:none}.eco-item-icon{transition:none}}
+
+
+/* Ticket navigation */
+.ticket-nav-btn{
+  position:relative;
+  display:inline-flex;
+  align-items:center;
+  gap:8px;
+  min-height:42px;
+  padding:0 13px;
+  border:1px solid #63202b;
+  border-radius:12px;
+  background:#120b0f;
+  color:#f4e9eb;
+  cursor:pointer;
+  font-weight:800;
+  letter-spacing:.02em;
+  transition:.18s;
+}
+.ticket-nav-btn:hover,.ticket-nav-btn:focus-visible{
+  background:#250a11;
+  border-color:#a32a3b;
+  box-shadow:0 0 20px #ff173d20;
+}
+.ticket-nav-icon{font-size:18px;line-height:1}
+.ticket-nav-count{
+  min-width:20px;
+  height:20px;
+  padding:0 5px;
+  display:inline-grid;
+  place-items:center;
+  border-radius:999px;
+  background:#ff203f;
+  color:#fff;
+  font-size:11px;
+  line-height:20px;
+  box-shadow:0 0 12px #ff203f66;
+}
+@media(max-width:620px){
+  .ticket-nav-btn{min-height:38px;padding:0 10px;font-size:11px}
+  .ticket-nav-btn>span:nth-child(2){display:none}
+}
