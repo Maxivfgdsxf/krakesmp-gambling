@@ -161,7 +161,11 @@
   const baseRenderPageRef = baseRenderPage;
   renderPage = async function () {
     const route = (location.hash.slice(1) || "home").split("?")[0].split("/")[0] || "home";
-    if (!["dashboard","friends","notifications"].includes(route)) return baseRenderPageRef();
+    if (!["dashboard","friends","notifications"].includes(route)) {
+      if (eventCountdownTimer) { clearInterval(eventCountdownTimer); eventCountdownTimer = null; }
+      if (extraGameTimer) { clearInterval(extraGameTimer); extraGameTimer = null; }
+      return baseRenderPageRef();
+    }
     const requestId = ++navigationRequestId;
     if (activeChatChannel) { await db.removeChannel(activeChatChannel); activeChatChannel = null; }
     if (chatPollTimer) { clearInterval(chatPollTimer); chatPollTimer = null; }
@@ -186,7 +190,7 @@
 
   wirePage = function (route) {
     baseWirePage(route);
-    if (route === "dashboard") wireDashboard();
+    if (route === "dashboard") { wireDashboard(); startEventCountdowns(); }
     if (route === "friends") wireFriends();
     if (route === "notifications") wireNotifications();
     if (route === "market") wireMarketWatchlist();
@@ -334,7 +338,7 @@
             if (remaining <= 0) {
               clearInterval(extraGameTimer); extraGameTimer = null; target.disabled = true;
               timer.textContent = "Fertig! " + clicks + " Klicks";
-              await saveExtraGame(slug, clicks * 10, 10000, true, { clicks });
+              await saveExtraGame(slug, clicks * 10, 10000, true, { clicks }).catch(err => toast(err.message, "error"));
             }
           }, 100);
         };
@@ -350,7 +354,7 @@
           const score = won ? word.length * 100 : 0;
           area.querySelector("button").disabled = true;
           area.insertAdjacentHTML("beforeend", '<p class="notice">' + (won ? "Richtig! +" + score + " Punkte." : "Leider nicht richtig. Versuche es erneut beim nächsten Lauf.") + '</p>');
-          await saveExtraGame(slug, score, null, won, { word, correct: won });
+          await saveExtraGame(slug, score, null, won, { word, correct: won }).catch(err => toast(err.message, "error"));
         };
       }
     }));
