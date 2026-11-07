@@ -341,11 +341,115 @@ async function renderChat() {
     '<p class="form-note">Nachrichten werden moderiert. Melde problematische Inhalte über „Melden“.</p></section>';
 }
 
-function placementRP(rank){const points=[100,75,60,50,45,40,35,30,25,20];return points[rank-1]??15;}
-function leaderboardSort(a,b){if(a.bestTime!==null&&b.bestTime!==null&&a.bestTime!==b.bestTime)return a.bestTime-b.bestTime;if(a.bestTime!==null&&b.bestTime===null)return -1;if(a.bestTime===null&&b.bestTime!==null)return 1;const s=Number(b.score||0)-Number(a.score||0);return s!==0?s:Number(b.rounds||0)-Number(a.rounds||0);}
-function buildLeaderboardGroups(games,results){const groups=new Map((games??[]).map(g=>[g.id,new Map()]));for(const r of results??[]){const p=groups.get(r.minigame_id);if(!p)continue;const cur=p.get(r.user_id);const time=Number(r.time_ms)>0?Number(r.time_ms):null;if(!cur)p.set(r.user_id,{...r,rounds:1,bestTime:time});else{cur.rounds++;if(time!==null&&(cur.bestTime===null||time<cur.bestTime))cur.bestTime=time;if(Number(r.score||0)>Number(cur.score||0))cur.score=r.score;if(r.profiles)cur.profiles=r.profiles;}}const rpByUser=new Map();for(const g of games??[]){[...(groups.get(g.id)||new Map()).values()].sort(leaderboardSort).slice(0,25).forEach((p,i)=>{p.placement=i+1;p.placementRP=placementRP(i+1);rpByUser.set(p.user_id,(rpByUser.get(p.user_id)||0)+p.placementRP);});}return {groups,rpByUser};}
+const TIMED_MINIGAMES = new Set(["aim","reaction","speed"]);
+function placementRP(rank){
+  const points=[100,75,60,50,45,40,35,30,25,20];
+  return points[rank-1] ?? 15;
+}
+function isTimedMinigame(slug){return TIMED_MINIGAMES.has(slug);}
+function leaderboardSort(a,b,slug){
+  if(isTimedMinigame(slug)){
+    const at=a.bestTime??Number.POSITIVE_INFINITY,bt=b.bestTime??Number.POSITIVE_INFINITY;
+    if(at!==bt)return at-bt;
+    return Number(b.bestScore||0)-Number(a.bestScore||0);
+  }
+  const scoreDiff=Number(b.bestScore||0)-Number(a.bestScore||0);
+  return scoreDiff!==0?scoreDiff:Number(b.wins||0)-Number(a.wins||0);
+}
+function sameLeaderboardPerformance(a,b,slug){
+  if(isTimedMinigame(slug))return a.bestTime===b.bestTime&&(a.bestTime!==null||Number(a.bestScore||0)===Number(b.bestScore||0));
+  return Number(a.bestScore||0)===Number(b.bestScore||0)&&Number(a.wins||0)===Number(b.wins||0);
+}
+function buildLeaderboardGroups(games,results){
+  const gameById=new Map((games??[]).map(g=>[g.id,g]));
+  const groups=new Map((games??[]).map(g=>[g.id,new Map()]));
+  const attemptsByUser=new Map(),winsByUser=new Map();
+  for(const r of results??[]){
+    const game=gameById.get(r.minigame_id),players=groups.get(r.minigame_id);
+    if(!game||!players||!r.user_id)continue;
+    // Ignore legacy Aim rows caused by repeated clicks after the 10th target.
+    if(game.slug==="aim"&&r.metadata&&r.metadata.hits!==undefined&&Number(r.metadata.hits)!==10)continue;
+    attemptsByUser.set(r.user_id,(attemptsByUser.get(r.user_id)||0)+1);
+    if(r.won)winsByUser.set(r.user_id,(winsByUser.get(r.user_id)||0)+1);
+    const score=Number.isFinite(Number(r.score))?Number(r.score):0;
+    const rawTime=Number(r.time_ms),time=Number.isFinite(rawTime)&&rawTime>0?rawTime:null;
+    let player=players.get(r.user_id);
+    if(!player){
+      player={user_id:r.user_id,profiles:r.profiles||null,rounds:0,wins:0,bestTime:null,bestScore:score,bestWon:Boolean(r.won),placement:0,placementRP:0};
+      players.set(r.user_id,player);
+    }
+    player.rounds++;
+    if(r.won)player.wins++;
+    if(r.profiles)player.profiles=r.profiles;
+    if(isTimedMinigame(game.slug)){
+      if(time!==null&&(player.bestTime===null||time<player.bestTime)){
+        player.bestTime=time;player.bestScore=score;player.bestWon=Boolean(r.won);
+      }else if(time===player.bestTime&&score>player.bestScore){
+        player.bestScore=score;
+      }
+    }else if(score>player.bestScore||(score===player.bestScore&&r.won&&!player.bestWon)){
+      player.bestScore=score;player.bestWon=Boolean(r.won);
+    }
+  }
+  const rpByUser=new Map();
+  for(const game of games??[]){
+    const players=[...(groups.get(game.id)||new Map()).values()].sort((a,b)=>leaderboardSort(a,b,game.slug));
+    let previous=null,previousRank=0;
+    players.forEach((player,index)=>{
+      const tied=previous&&sameLeaderboardPerformance(player,previous,game.slug);
+      const rank=tied?previousRank:index+1;
+      player.placement=rank;player.placementRP=placementRP(rank);
+      rpByUser.set(player.user_id,(rpByUser.get(player.user_id)||0)+player.placementRP);
+      previous=player;previousRank=rank;
+    });
+  }
+  return {groups,rpByUser,attemptsByUser,winsByUser};
+}
+async function fetchLeaderboardSnapshot(){
+  const [gamesResult,resultsResult]=await Promise.all([
+    db.from("minigames").select("id,slug,name,description").eq("active",true).order("name"),
+    db.from("minigame_results").select("minigame_id,user_id,score,time_ms,won,metadata,created_at,profiles(username,display_name,verified)").order("created_at",{ascending:false}).limit(10000)
+  ]);
+  if(gamesResult.error)throw gamesResult.error;
+  if(resultsResult.error)throw resultsResult.error;
+  const games=gamesResult.data??[],results=resultsResult.data??[];
+  const ids=[...new Set(results.map(r=>r.user_id).filter(Boolean))],rolesByUser=new Map();
+  if(ids.length){
+    const {data:roleRows,error:roleError}=await db.from("user_roles").select("user_id,roles(name,display_name,priority)").in("user_id",ids);
+    if(roleError)throw roleError;
+    (roleRows??[]).forEach(row=>{if(!rolesByUser.has(row.user_id))rolesByUser.set(row.user_id,[]);if(row.roles)rolesByUser.get(row.user_id).push(row.roles);});
+  }
+  results.forEach(row=>{row.profiles={...(row.profiles||{}),roles:rolesByUser.get(row.user_id)||[]};});
+  return {games,results,...buildLeaderboardGroups(games,results)};
+}
+function globalLeaderboardRows(snapshot){
+  const people=new Map();
+  for(const game of snapshot.games){
+    for(const player of (snapshot.groups.get(game.id)?.values()||[])){
+      if(!people.has(player.user_id))people.set(player.user_id,player);
+    }
+  }
+  return [...people.values()].map(player=>({...player,totalRP:snapshot.rpByUser.get(player.user_id)||0}))
+    .filter(player=>player.totalRP>0)
+    .sort((a,b)=>b.totalRP-a.totalRP||b.wins-a.wins||a.user_id.localeCompare(b.user_id));
+}
+async function renderLeaderboards(){
+  const snapshot=await fetchLeaderboardSnapshot(),{games,groups}=snapshot;
+  const globalRows=globalLeaderboardRows(snapshot).slice(0,25);
+  const globalBody=globalRows.map((p,i)=>'<tr><td><span class="rank '+(i<3?["gold","silver","bronze"][i]:"")+'">'+(i+1)+'</span></td><td><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong> '+roleBadges(p.profiles?.roles)+' '+badge(p.profiles?.verified)+'</td><td><strong>'+number(p.totalRP)+' RP</strong></td></tr>').join("");
+  const formatTime=ms=>ms===null||ms===undefined?"—":(Math.round(Number(ms))>=1000?(Number(ms)/1000).toFixed(2)+" s":Math.round(Number(ms))+" ms");
+  const cards=games.map((game,index)=>{
+    const timed=isTimedMinigame(game.slug);
+    const players=[...(groups.get(game.id)?.values()||[])].sort((a,b)=>leaderboardSort(a,b,game.slug)).slice(0,25);
+    const body=players.map(p=>'<tr><td><span class="rank '+(p.placement<=3?["gold","silver","bronze"][p.placement-1]:"")+'">'+p.placement+'</span></td><td><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong> '+roleBadges(p.profiles?.roles)+' '+badge(p.profiles?.verified)+'</td><td><strong>'+(timed?formatTime(p.bestTime):number(p.bestScore))+'</strong></td><td><strong>'+number(p.placementRP)+' RP</strong></td><td>'+number(p.rounds)+'</td></tr>').join("");
+    return '<section class="leaderboard-game card" data-board="'+esc(game.slug)+'" '+(index?"hidden":"")+'><div class="section-head"><div><div class="eyebrow">KRAKE COMPETITIVE</div><h2>'+esc(game.name)+' Leaderboard</h2><p>'+esc(game.description||"Spieler-Rankings")+'</p></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>Platz</th><th>Spieler</th><th>'+(timed?"Bestzeit":"Score")+'</th><th>RP</th><th>Spiele</th></tr></thead><tbody>'+(body||'<tr><td colspan="5">Noch keine Ergebnisse.</td></tr>')+'</tbody></table></div></section>';
+  }).join("");
+  const tabs=games.map((game,i)=>'<button type="button" class="leaderboard-tab '+(!i?"active":"")+'" data-leaderboard-game="'+esc(game.slug)+'">'+esc(game.name)+'</button>').join("");
+  return pageHead("COMPETITIVE","Leaderboards","Einheitliche Ranking Points aus deinen besten Platzierungen in allen aktiven Minigames.")+
+    '<section class="card leaderboard-global"><div class="section-head"><div><div class="eyebrow">RANKING POINTS</div><h2>Globales RP Ranking</h2></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>RP gesamt</th></tr></thead><tbody>'+(globalBody||'<tr><td colspan="3">Noch keine Platzierungen.</td></tr>')+'</tbody></table></div></section>'+
+    '<section class="card leaderboard-shell"><div class="leaderboard-tabs">'+tabs+'</div><div class="leaderboard-panels">'+cards+'</div></section>';
+}
 
-async function renderLeaderboards(){const {data:games,error:ge}=await db.from("minigames").select("id,slug,name,description").eq("active",true).order("name");if(ge)throw ge;const {data:results,error:re}=await db.from("minigame_results").select("minigame_id,user_id,score,time_ms,won,created_at,profiles(username,display_name,verified)").order("created_at",{ascending:false}).limit(5000);if(re)throw re;const ids=[...new Set((results??[]).map(r=>r.user_id).filter(Boolean))];const roles=new Map();if(ids.length){const {data:rr}=await db.from("user_roles").select("user_id,roles(name,display_name,priority)").in("user_id",ids);(rr??[]).forEach(r=>{if(!roles.has(r.user_id))roles.set(r.user_id,[]);if(r.roles)roles.get(r.user_id).push(r.roles);});}(results??[]).forEach(r=>{r.profiles={...(r.profiles||{}),roles:roles.get(r.user_id)||[]};});const {groups,rpByUser}=buildLeaderboardGroups(games,results);const time=ms=>{if(ms===null||ms===undefined)return"—";const n=Math.round(Number(ms));return n>=1000?(n/1000).toFixed(2)+" s":n+" ms";};const global=new Map();for(const g of games??[])for(const p of (groups.get(g.id)||new Map()).values())if(!global.has(p.user_id))global.set(p.user_id,p);const globalRows=[...global.values()].sort((a,b)=>(rpByUser.get(b.user_id)||0)-(rpByUser.get(a.user_id)||0)).slice(0,25);const globalBody=globalRows.map((p,i)=>'<tr><td><span class="rank '+(i<3?["gold","silver","bronze"][i]:"")+'">'+(i+1)+'</span></td><td><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong> '+roleBadges(p.profiles?.roles)+' '+badge(p.profiles?.verified)+'</td><td><strong>'+number(rpByUser.get(p.user_id)||0)+' RP</strong></td></tr>').join("");const cards=(games??[]).map((g,index)=>{const rows=[...(groups.get(g.id)||new Map()).values()].sort(leaderboardSort).slice(0,25);const body=rows.map((p,i)=>'<tr><td><span class="rank '+(i<3?["gold","silver","bronze"][i]:"")+'">'+(i+1)+'</span></td><td><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong> '+roleBadges(p.profiles?.roles)+' '+badge(p.profiles?.verified)+'</td><td><strong>'+time(p.bestTime)+'</strong></td><td><strong>'+number(p.placementRP)+' RP</strong></td><td>'+number(p.rounds)+'</td></tr>').join("");return '<section class="leaderboard-game card" data-board="'+esc(g.slug)+'" '+(index?"hidden":"")+'><div class="section-head"><div><div class="eyebrow">KRAKE COMPETITIVE</div><h2>'+esc(g.name)+' Leaderboard</h2><p>'+esc(g.description||"Spieler-Rankings")+'</p></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>Bestzeit</th><th>RP</th><th>Runden</th></tr></thead><tbody>'+(body||'<tr><td colspan="5">Noch keine Ergebnisse.</td></tr>')+'</tbody></table></div></section>';}).join("");const tabs=(games??[]).map((g,i)=>'<button class="leaderboard-tab '+(!i?"active":"")+'" data-leaderboard-game="'+esc(g.slug)+'">'+esc(g.name)+'</button>').join("");return pageHead("COMPETITIVE","Leaderboards","RP wird automatisch aus deinen Platzierungen berechnet.")+'<section class="card leaderboard-global"><div class="section-head"><div><div class="eyebrow">RANKING POINTS</div><h2>Globales RP Ranking</h2></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>RP</th></tr></thead><tbody>'+(globalBody||'<tr><td colspan="3">Noch keine Platzierungen.</td></tr>')+'</tbody></table></div></section><section class="card leaderboard-shell"><div class="leaderboard-tabs">'+tabs+'</div><div class="leaderboard-panels">'+cards+'</div></section>';}
 async function renderMarket() {
   const [items,prices]=await Promise.all([
     db.from("market_items").select("id,symbol,name,description,stock").eq("active",true).order("name"),
