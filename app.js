@@ -413,9 +413,7 @@ function wireChat() {
     const {error}=await db.from("chat_reports").insert({message_id:Number(button.dataset.report),reporter_user_id:currentUser.id,reason});
     toast(error?error.message:"Nachricht wurde gemeldet.",error?"error":"success");
   });
-  if(window.supabase?.Realtime){
-    activeChatChannel=db.channel("krake-global-chat").on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages"},()=>loadChatMessages().catch(console.error)).subscribe();
-  }
+  activeChatChannel=db.channel("krake-global-chat").on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages"},()=>loadChatMessages().catch(console.error)).subscribe();
 }
 function wireReaction() {
   const button=$("reaction-button");if(!button)return;
