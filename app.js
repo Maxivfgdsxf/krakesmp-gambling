@@ -137,7 +137,7 @@ async function refreshAuth() {
 }
 function shell(content) {
   const display = profile?.display_name || profile?.username || "Gast";
-  const nav = NAV.map(([route,icon,label,group]) =>
+  const nav = NAV.filter(([route])=>!["admin","market-tickets"].includes(route)).map(([route,icon,label,group]) =>
     '<button class="nav-link '+(currentRoute===route?'active':'')+'" data-route="'+route+'"><span class="nav-icon">'+icon+'</span>'+label+'</button>'
   ).join("");
   root.innerHTML = `
