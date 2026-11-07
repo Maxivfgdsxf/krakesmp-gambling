@@ -274,7 +274,14 @@ async function renderBuilding() {
   if(!currentUser)return pageHead("PLAYER SERVICE","Building Service","Reiche deinen Bauauftrag ein und bespreche Details privat mit dem Team.")+'<div class="card">'+empty("Melde dich an, um einen Building-Auftrag zu erstellen.")+'<button class="btn" data-route="login">Anmelden</button></div>';
   const {data:orders,error}=await db.from("building_orders").select("id,title,description,budget,status,created_at").eq("user_id",currentUser.id).order("created_at",{ascending:false});
   if(error)throw error;
-  const cards=(orders??[]).map(o=>'<article class="list-item"><div class="item-head"><strong>'+esc(o.title)+'</strong><span class="pill">'+esc(o.status)+'</span></div><p>'+esc(o.description)+'</p><div class="inline-meta">Budget: '+(o.budget===null?"Offen":number(o.budget)+" ◆")+' · '+dateTime(o.created_at)+'</div><form class="chat-compose" data-building-message="'+o.id+'"><input class="input" name="message" maxlength="2000" placeholder="Nachricht an das Team …" required><button class="btn small">Senden</button></form></article>').join("");
+  const orderIds=(orders??[]).map(o=>o.id);
+  const messageResult=orderIds.length?await db.from("building_messages").select("id,order_id,user_id,message,created_at,profiles(username)").in("order_id",orderIds).order("created_at",{ascending:true}):{data:[],error:null};
+  if(messageResult.error)throw messageResult.error;
+  const orderMessages=messageResult.data??[];
+  const cards=(orders??[]).map(o=>{
+    const history=orderMessages.filter(m=>m.order_id===o.id).map(m=>'<div class="chat-message"><div class="who">'+esc(m.profiles?.username||"Team")+' <span class="when">'+dateTime(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>').join("");
+    return '<article class="list-item"><div class="item-head"><strong>'+esc(o.title)+'</strong><span class="pill">'+esc(o.status)+'</span></div><p>'+esc(o.description)+'</p><div class="inline-meta">Budget: '+(o.budget===null?"Offen":number(o.budget)+" ◆")+' · '+dateTime(o.created_at)+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch keine Nachrichten vom Team.</div>')+'</div><form class="chat-compose" data-building-message="'+o.id+'"><input class="input" name="message" maxlength="2000" placeholder="Nachricht an das Team …" required><button class="btn small">Senden</button></form></article>';
+  }).join("");
   return pageHead("PLAYER SERVICE","Building Service","Was soll gebaut werden? Das Team kann den Status aktualisieren und mit dir schreiben.")+
     '<div class="grid two"><section class="card"><h2>Neuen Auftrag erstellen</h2><form class="form" id="building-form"><div class="field"><label>Titel</label><input class="input" name="title" maxlength="100" required></div><div class="field"><label>Beschreibung</label><textarea name="description" maxlength="4000" required></textarea></div><div class="field"><label>Budget in ◆ (optional)</label><input class="input" name="budget" type="number" min="0"></div><button class="btn">Auftrag senden</button></form></section><section class="card"><h2>Deine Aufträge</h2><div class="list">'+(cards||empty("Du hast noch keine Aufträge erstellt."))+'</div></section></div>';
 }
@@ -283,7 +290,14 @@ async function renderApplications() {
   if(!currentUser)return pageHead("JOIN THE TEAM","Team bewerben","Bewirb dich als Helper, Moderator oder Media.")+'<div class="card">'+empty("Melde dich an, um dich fürs Team zu bewerben.")+'<button class="btn" data-route="login">Anmelden</button></div>';
   const {data,error}=await db.from("applications").select("id,desired_role,reason,experience,status,created_at").eq("user_id",currentUser.id).order("created_at",{ascending:false});
   if(error)throw error;
-  const cards=(data??[]).map(a=>'<article class="list-item"><div class="item-head"><strong>'+esc(a.desired_role)+'</strong><span class="pill">'+esc(a.status)+'</span></div><p>'+esc(a.reason)+'</p><div class="inline-meta">'+dateTime(a.created_at)+'</div></article>').join("");
+  const applicationIds=(data??[]).map(a=>a.id);
+  const messageResult=applicationIds.length?await db.from("application_messages").select("id,application_id,user_id,message,created_at,profiles(username)").in("application_id",applicationIds).order("created_at",{ascending:true}):{data:[],error:null};
+  if(messageResult.error)throw messageResult.error;
+  const applicationMessages=messageResult.data??[];
+  const cards=(data??[]).map(a=>{
+    const history=applicationMessages.filter(m=>m.application_id===a.id).map(m=>'<div class="chat-message"><div class="who">'+esc(m.profiles?.username||"Team")+' <span class="when">'+dateTime(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>').join("");
+    return '<article class="list-item"><div class="item-head"><strong>'+esc(a.desired_role)+'</strong><span class="pill">'+esc(a.status)+'</span></div><p>'+esc(a.reason)+'</p><div class="inline-meta">'+dateTime(a.created_at)+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch keine Rückfragen vom Team.</div>')+'</div><form class="chat-compose" data-application-message="'+a.id+'"><input class="input" name="message" maxlength="2000" placeholder="Nachricht zur Bewerbung …" required><button class="btn small">Senden</button></form></article>';
+  }).join("");
   return pageHead("JOIN THE TEAM","Team bewerben","Team-Anträge sind nur für Teamrollen vorgesehen. Das Team prüft deine Bewerbung.")+
     '<div class="grid two"><section class="card"><h2>Bewerbung erstellen</h2><form class="form" id="application-form"><div class="field"><label>Gewünschte Rolle</label><select name="desired_role"><option value="helper">Helper</option><option value="moderator">Moderator</option><option value="media">Media</option></select></div><div class="field"><label>Warum möchtest du ins Team?</label><textarea name="reason" minlength="30" maxlength="4000" required></textarea></div><div class="field"><label>Erfahrung (optional)</label><textarea name="experience" maxlength="3000"></textarea></div><button class="btn">Bewerbung senden</button></form></section><section class="card"><h2>Deine Bewerbungen</h2><div class="list">'+(cards||empty("Noch keine Bewerbungen vorhanden."))+'</div></section></div>';
 }
@@ -454,6 +468,11 @@ function wireApplications() {
     const {error}=await db.from("applications").insert(values);
     if(error)toast(error.message,"error");else{toast("Bewerbung gesendet.","success");await renderPage();}
   });
+  document.querySelectorAll("[data-application-message]").forEach(form=>form.addEventListener("submit",async e=>{
+    e.preventDefault();const message=new FormData(form).get("message");const applicationId=Number(form.dataset.applicationMessage);
+    const {error}=await db.from("application_messages").insert({application_id:applicationId,user_id:currentUser.id,message:String(message||"").trim()});
+    if(error)toast(error.message,"error");else{form.reset();toast("Nachricht zur Bewerbung gesendet.","success");await renderPage();}
+  }));
 }
 function wireSettings() {
   $("profile-form")?.addEventListener("submit",async e=>{
