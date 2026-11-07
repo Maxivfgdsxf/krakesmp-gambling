@@ -67,7 +67,7 @@
       const done = unlocked.has(a.slug);
       return '<div class="achievement-tile ' + (done ? "unlocked" : "locked") + '"><span class="achievement-icon">' + esc(a.icon) + '</span><strong>' + esc(a.title) + '</strong><small>' + esc(a.description) + '</small><span class="pill ' + (done ? "green" : "") + '">' + (done ? "FREIGESCHALTET" : "GESPERRT") + '</span></div>';
     }).join("");
-    const eventHtml = (eventsRes.data || []).map(e => '<article class="event-count-card"><div class="item-head"><strong>' + esc(e.name) + '</strong><span class="pill red">LIVE / GEPLANT</span></div><p>' + esc(e.description || "") + '</p><div class="countdown" data-countdown="' + esc(e.starts_at) + '">Lädt …</div></article>').join("");
+    const eventHtml = (eventsRes.data || []).map(e => '<article class="event-count-card"><div class="item-head"><strong>' + esc(e.name) + '</strong><span class="pill red">LIVE / GEPLANT</span></div><p>' + esc(e.description || "") + '</p><div class="countdown" data-countdown="' + esc(e.starts_at) + '" data-countdown-end="' + esc(e.ends_at || "") + '">Lädt …</div></article>').join("");
     const unread = (notificationsRes.data || []).length;
     const stats = statsRes.data || {};
     return pageHead("PLAYER HUB", "Dein KRAKE Dashboard", "Dein Fortschritt, deine Quests und alles Wichtige an einem Ort.") +
@@ -148,7 +148,7 @@
     if (eventCountdownTimer) clearInterval(eventCountdownTimer);
     const { data, error } = await db.from("events").select("id,name,description,banner_url,starts_at,ends_at,active,config").order("starts_at", { ascending: true });
     if (error) throw error;
-    const html = (data || []).map(e => '<article class="card event-feature-card"><div class="item-head"><span class="pill ' + (e.active ? "red" : "") + '">' + (e.active ? "AKTIV" : "GEPLANT") + '</span><span class="form-note">' + dateTime(e.starts_at) + '</span></div><h2>' + esc(e.name) + '</h2><p>' + esc(e.description || "Weitere Informationen folgen.") + '</p><div class="countdown" data-countdown="' + esc(e.starts_at) + '"></div>' + (e.ends_at ? '<div class="inline-meta">Endet: ' + dateTime(e.ends_at) + '</div>' : "") + '</article>').join("");
+    const html = (data || []).map(e => '<article class="card event-feature-card"><div class="item-head"><span class="pill ' + (e.active ? "red" : "") + '">' + (e.active ? "AKTIV" : "GEPLANT") + '</span><span class="form-note">' + dateTime(e.starts_at) + '</span></div><h2>' + esc(e.name) + '</h2><p>' + esc(e.description || "Weitere Informationen folgen.") + '</p><div class="countdown" data-countdown="' + esc(e.starts_at) + '" data-countdown-end="' + esc(e.ends_at || "") + '"></div>' + (e.ends_at ? '<div class="inline-meta">Endet: ' + dateTime(e.ends_at) + '</div>' : "") + '</article>').join("");
     return pageHead("LIVE EVENTS", "KRAKE Events", "Community-Events mit Start-Countdown und Live-Status.") + '<section class="grid two">' + (html || empty("Momentan ist kein Event eingetragen.")) + '</section>';
   };
 
@@ -327,9 +327,12 @@
 
   function startEventCountdowns() {
     const update = () => document.querySelectorAll("[data-countdown]").forEach(node => {
-      const diff = new Date(node.dataset.countdown).getTime() - Date.now();
+      const now = Date.now();
+      const endAt = node.dataset.countdownEnd ? new Date(node.dataset.countdownEnd).getTime() : null;
+      if (Number.isFinite(endAt) && now >= endAt) { node.textContent = "EVENT BEENDET"; return; }
+      const diff = new Date(node.dataset.countdown).getTime() - now;
       if (!Number.isFinite(diff)) { node.textContent = "Zeit nicht verfügbar"; return; }
-      if (diff <= 0) { node.textContent = "EVENT LÄUFT / STARTZEIT ERREICHT"; return; }
+      if (diff <= 0) { node.textContent = "EVENT LÄUFT"; return; }
       const days = Math.floor(diff / 86400000), hours = Math.floor(diff % 86400000 / 3600000), mins = Math.floor(diff % 3600000 / 60000), secs = Math.floor(diff % 60000 / 1000);
       node.textContent = days + "T " + hours + "Std " + mins + "Min " + secs + "Sek";
     });
