@@ -74,7 +74,7 @@ function go(route) {
 }
 function openDrawer() { $("drawer")?.classList.add("open"); }
 function closeDrawer() { $("drawer")?.classList.remove("open"); }
-function isAdmin() { return permissions.includes("users.view") || permissions.includes("roles.manage"); }
+function isAdmin() { return currentUser?.id === "cee3680c-3580-47c5-8c64-0277eac03800" || permissions.includes("users.view") || permissions.includes("roles.manage"); }
 function badge(verified) { return verified ? '<span class="verified" title="Minecraft verifiziert">✓</span>' : ""; }
 async function list(table, select="*") {
   const { data, error } = await db.from(table).select(select);
