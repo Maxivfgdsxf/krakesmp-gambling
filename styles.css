@@ -1095,3 +1095,53 @@ body{background:radial-gradient(circle at 50% -12%,#3a0915 0,#14070c 30%,#080609
   from{transform:translateX(-16px)}
   to{transform:translateX(16px)}
 }
+
+
+/* Accessible show/hide controls for account password fields */
+.password-input-wrap{
+  position:relative;
+  width:100%;
+}
+.password-input-wrap>.input{
+  width:100%;
+  padding-right:50px;
+}
+.password-toggle{
+  position:absolute;
+  z-index:2;
+  top:50%;
+  right:7px;
+  display:grid;
+  place-items:center;
+  width:36px;
+  height:36px;
+  padding:0;
+  border:1px solid transparent;
+  border-radius:9px;
+  background:transparent;
+  color:#b9a7ad;
+  cursor:pointer;
+  transform:translateY(-50%);
+  transition:color .16s ease,background .16s ease,border-color .16s ease;
+  touch-action:manipulation;
+}
+.password-toggle:hover,
+.password-toggle:focus-visible{
+  color:#ff7182;
+  background:#ff536512;
+  border-color:#ff53654a;
+  outline:none;
+}
+.password-toggle:focus-visible{
+  box-shadow:0 0 0 3px #ff53652b;
+}
+.password-toggle svg{
+  width:20px;
+  height:20px;
+  display:block;
+  fill:none;
+  stroke:currentColor;
+  stroke-width:1.8;
+  stroke-linecap:round;
+  stroke-linejoin:round;
+}
