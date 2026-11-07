@@ -59,3 +59,11 @@ A duel creator's stake is escrowed when the challenge is created. The second pla
 The Supabase migration history contains the economy migrations beginning with `krake_virtual_economy_exchange_v2` and subsequent player market, PvP, access-policy, reward and bug-fix migrations. The deployed database was smoke-tested inside rolled-back transactions for exchange buy, rank reward, dividends, player-company creation/listing/purchase, shop purchase, PvP settlement, quiz prompts, event rewards and achievement rewards.
 
 The existing Ingame Market and its ticket workflow are unchanged. The new economy is a separate portal route and uses the existing black/crimson visual language.
+
+
+## Neue Wirtschaftsfeatures (November 2026)
+- Spielerunternehmen: bestehende Gründung um serverseitige Firmenkasse erweitert.
+- Spieler-Kredite: Kreditangebote, Annahme, Rückzahlung, Storno und fälliger Einzug mit Zinsen.
+- Auktionshaus: Aktien werden versteigert; Gebote werden serverseitig reserviert und überbotene Gebote erstattet.
+- Markt Crash & Boom: automatische globale oder sektorale Markt-Schocks mit 30-Minuten-Live-Events.
+- Alle neuen mutierenden Aktionen laufen über geschützte RPCs; die neuen Tabellen haben RLS.
