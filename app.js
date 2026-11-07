@@ -332,6 +332,13 @@ async function renderLeaderboards() {
     .select("minigame_id,user_id,score,time_ms,won,created_at,profiles(username,display_name,verified)")
     .order("created_at",{ascending:false}).limit(5000);
   if(resultsError) throw resultsError;
+  const lbIds=[...new Set((results??[]).map(r=>r.user_id).filter(Boolean))];
+  const lbRoles=new Map();
+  if(lbIds.length){
+    const {data:roleRows}=await db.from("user_roles").select("user_id,roles(name,display_name,priority)").in("user_id",lbIds);
+    (roleRows??[]).forEach(r=>{if(!lbRoles.has(r.user_id))lbRoles.set(r.user_id,[]);if(r.roles)lbRoles.get(r.user_id).push(r.roles);});
+  }
+  (results??[]).forEach(r=>{r.profiles={...(r.profiles||{}),roles:lbRoles.get(r.user_id)||[]};});
 
   const groups=new Map((games??[]).map(g=>[g.id,new Map()]));
   for(const r of (results??[])){
@@ -367,7 +374,7 @@ async function renderLeaderboards() {
 
     const body=rows.map((p,i)=>{
       const player=esc(p.profiles?.display_name||p.profiles?.username||"Player");
-      const admin=p.user_id==="cee3680c-3580-47c5-8c64-0277eac03800" ? roleBadge("admin") : "";
+      const admin=roleBadges(p.profiles?.roles);
       return '<tr><td><span class="rank '+(i===0?"gold":i===1?"silver":i===2?"bronze":"")+'">'+(i+1)+'</span></td><td><strong>'+player+'</strong> '+badge(p.profiles?.verified)+' '+admin+'</td><td><strong>'+formatTime(p.bestTime)+'</strong></td><td>'+number(p.rounds)+'</td></tr>';
     }).join("");
 
