@@ -38,5 +38,6 @@ Use username `maxireiknabber` and the existing password of the retained Supabase
 - Enable GitHub Pages once in repository Settings → Pages → Build and deployment → GitHub Actions. The workflow is committed, but a public Pages URL is not available until that setting is enabled and the first deployment succeeds.
 - Minecraft server live status and actual Minecraft ownership proof require the server-side plugin/API and are not faked by the site.
 - The browser-side reaction challenge is a playable starter, not an anti-cheat-validated competitive result yet.
+- The virtual market is currently read-only; trading transactions and currency gameplay are a later update.
 - The remaining Minigames, full economy/trading actions, seasonal event editor, and complete admin data tooling are follow-on modules, not represented as fully finished here.
 - No real-money deposits, withdrawals or cash value are part of the virtual Market.
