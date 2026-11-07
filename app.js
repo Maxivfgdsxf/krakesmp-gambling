@@ -203,7 +203,7 @@ function shell(content) {
           ${nav.split('</button>').slice(5,8).map(x=>x+'</button>').join("")}
           <div class="nav-label">Account</div>
           ${nav.split('</button>').slice(8).map(x=>x+'</button>').join("")}
-          ${isAdmin()?'<div class="nav-label">Administration</div><button class="nav-link '+(currentRoute==="admin"?'active':'')+'" data-route="admin"><span class="nav-icon">✦</span>Admin Panel</button><button class="nav-link '+(currentRoute==="market-tickets"?'active':'')+'" data-route="market-tickets"><span class="nav-icon">🎫</span>Market Tickets</button>':""}
+          ${isAdmin()?'<div class="nav-label">Administration</div><button class="nav-link '+(currentRoute==="admin"?'active':'')+'" data-route="admin"><span class="nav-icon admin-nav-symbol">${adminMark()}</span>Admin Panel</button><button class="nav-link '+(currentRoute==="market-tickets"?'active':'')+'" data-route="market-tickets"><span class="nav-icon">🎫</span>Market Tickets</button>':""}
           <button class="nav-link" id="auth-nav"><span class="nav-icon">${currentUser?"↪":"→"}</span>${currentUser?"Abmelden":"Anmelden"}</button>
         </nav>
       </aside>
