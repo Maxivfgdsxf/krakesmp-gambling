@@ -5,6 +5,7 @@
   const baseWirePage = wirePage;
   const baseRenderHome = renderHome;
   const baseRenderProfile = renderProfile;
+  const baseRenderSettings = renderSettings;
   const baseRenderEvents = renderEvents;
   const baseRenderMarket = renderMarket;
   const baseRenderMinigames = renderMinigames;
@@ -121,6 +122,14 @@
     return html + '<section class="card hub-home-strip"><div><span class="eyebrow">DEIN SPIELERHUB</span><h2>Level ' + number(p?.level || 1) + ' · ' + number(p?.xp || 0) + ' XP</h2><p class="muted">Tagesbelohnung, Quests, Achievements und Freunde im Überblick.</p></div><button class="btn" data-route="dashboard">Dashboard öffnen →</button></section>';
   };
 
+  renderSettings = async function () {
+    const html = await baseRenderSettings();
+    if (!currentUser) return html;
+    const { data: details, error } = await db.from("profiles").select("bio,favorite_game").eq("id", currentUser.id).maybeSingle();
+    if (error) throw error;
+    return html + '<section class="card profile-edit-card"><div class="eyebrow">PLAYER IDENTITY</div><h2>Profil erweitern</h2><form id="profile-details-form" class="form"><div class="field"><label for="profile-bio">Über mich</label><textarea class="input" id="profile-bio" name="bio" rows="3" maxlength="240" placeholder="Erzähl der Community etwas über dich …">' + esc(details?.bio || "") + '</textarea></div><div class="field"><label for="favorite-game">Lieblings-Minispiel</label><input class="input" id="favorite-game" name="favorite_game" maxlength="40" value="' + esc(details?.favorite_game || "") + '" placeholder="z. B. Reaction"></div><button class="btn">Profil-Details speichern</button></form></section>';
+  };
+
   renderProfile = async function () {
     const html = await baseRenderProfile();
     if (!currentUser) return html;
@@ -154,6 +163,7 @@
   };
 
   renderMinigames = async function () {
+    if (currentUser) { const { error } = await db.rpc("ensure_player_quests"); if (error) throw error; }
     const html = await baseRenderMinigames();
     return html.replace(/data-game-start="(click-rush|typing-rush)"/g, 'data-extra-game-start="$1"');
   };
@@ -191,6 +201,7 @@
   wirePage = function (route) {
     baseWirePage(route);
     if (route === "dashboard") { wireDashboard(); startEventCountdowns(); }
+    if (route === "settings") wireProfileDetails();
     if (route === "friends") wireFriends();
     if (route === "notifications") wireNotifications();
     if (route === "market") wireMarketWatchlist();
@@ -200,6 +211,15 @@
       wireExtraMinigames();
     }
   };
+
+  function wireProfileDetails() {
+    $("profile-details-form")?.addEventListener("submit", async e => {
+      e.preventDefault();
+      const f = new FormData(e.currentTarget);
+      const { error } = await db.from("profiles").update({ bio: String(f.get("bio") || "").trim(), favorite_game: String(f.get("favorite_game") || "").trim() || null, updated_at: new Date().toISOString() }).eq("id", currentUser.id);
+      if (error) toast(error.message, "error"); else { await refreshAuth(); toast("Profil-Details gespeichert.", "success"); await renderPage(); }
+    });
+  }
 
   function wireDashboard() {
     $("claim-daily")?.addEventListener("click", async e => {
