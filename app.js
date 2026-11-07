@@ -89,6 +89,14 @@ function closeDrawer() {
   $("kraken-menu")?.setAttribute("aria-expanded","false");
 }
 function isAdmin() { return currentUser?.id === "cee3680c-3580-47c5-8c64-0277eac03800" || permissions.includes("users.view") || permissions.includes("roles.manage"); }
+async function refreshTicketNav(){
+  const badge=$("ticket-nav-count"); if(!badge||!currentUser)return;
+  try{
+    const query=isAdmin()?db.from("market_tickets").select("id",{count:"exact",head:true}).eq("status","open"):db.from("market_tickets").select("id",{count:"exact",head:true}).eq("user_id",currentUser.id).eq("status","open");
+    const {count,error}=await query; if(error)throw error;
+    const total=Number(count||0); badge.textContent=String(total); badge.hidden=total===0;
+  }catch(error){console.warn("Ticket navigation:",error.message);}
+}
 function roleBadge(roleName){
   const map={admin:"ADMIN",moderator:"MOD",helper:"HELPER",media:"MEDIA",verified:"VERIFIED"};
   const key=String(roleName||"").toLowerCase();
@@ -190,6 +198,7 @@ function shell(content) {
   root.innerHTML = `
     <header class="topbar">
       <a class="brand" href="#home" aria-label="KRAKE SMP Startseite"><span class="brand-logo house-brand" aria-hidden="true"><svg class="house-mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M8 30 32 9l24 21v24H38V40H26v14H8Z" fill="none" stroke="#ff5365" stroke-width="5" stroke-linejoin="round"/><path d="M23 29h18M26 36h12" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></span><span class="brand-word">KRAKE <span class="brand-smp">SMP</span></span></a>
+      ${currentUser?'<div class="top-actions"><button type="button" class="ticket-nav-btn" id="ticket-nav" data-route="market-tickets"><span class="ticket-nav-icon">🎫</span><span>Tickets</span><span class="ticket-nav-count" id="ticket-nav-count" hidden>0</span></button></div>':""}
       <button type="button" class="kraken-menu-btn" id="kraken-menu" aria-label="KRAKE Navigation öffnen" aria-controls="drawer" aria-expanded="false" title="KRAKE Navigation">${KRAKEN_CREST}</button>
     </header>
     <div class="drawer" id="drawer">
@@ -246,6 +255,8 @@ function shell(content) {
     await db.auth.signOut(); await refreshAuth(); go("home"); await render();
   };
   root.querySelectorAll("[data-route]").forEach(button=>button.addEventListener("click",()=>go(button.dataset.route)));
+  $("ticket-nav")?.addEventListener("click",()=>go("market-tickets"));
+  refreshTicketNav();
   wireRoleAuraToggles();
 }
 function pageHead(eyebrow,title,desc="") {
@@ -578,7 +589,7 @@ async function renderAdmin() {
   if(!isAdmin())return pageHead("RESTRICTED","Kein Zugriff","Dein Account besitzt keine Admin-Berechtigung.")+'<div class="card">'+empty("Das Admin Panel ist serverseitig geschützt.")+'</div>';
   return pageHead("CONTROL CENTER","Admin Panel","Serverseitig abgesicherte Verwaltung und Audit-Protokoll.")+
     '<section class="card"><div class="admin-tabs">'+[
-      ["overview","Dashboard"],["economy","KC-Wirtschaft"],["players","Players"],["bans","Bans"],["verifications","Minecraft"],["applications","Bewerbungen"],["building","Building"],["market","Market"],["market_tickets","Market Tickets"],["chat","Chat Reports"],["roles","Rollen"],["audit","Audit Logs"],["maintenance","Maintenance"],["console","Admin Console"]
+      ["overview","Dashboard"],["economy","KC-Wirtschaft"],["players","Players"],["bans","Bans"],["verifications","Minecraft"],["applications","Bewerbungen"],["building","Building"],["market","Market"],["chat","Chat Reports"],["roles","Rollen"],["audit","Audit Logs"],["maintenance","Maintenance"],["console","Admin Console"]
     ].map(([k,v])=>'<button data-admin-tab="'+k+'" class="'+(adminSection===k?"active":"")+'">'+v+'</button>').join("")+'</div><div id="admin-content" class="admin-layout">'+empty("Bereich wird geladen …")+'</div></section>';
 }
 
