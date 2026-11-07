@@ -146,7 +146,7 @@ function shell(content) {
       <a class="brand" href="#home"><span class="brand-logo" aria-hidden="true">${KRAKEN_CREST}</span><span>KRAKE SMP</span></a>
       <label class="global-search"><span>⌕</span><input id="site-search" type="search" placeholder="Suche nach Spielern, Items …" aria-label="Website durchsuchen"></label>
       <div class="top-actions">
-        <a class="wallet-chip" href="#market"><span>◉</span> Market</a>
+        
         
         <span class="account-chip">${esc(display)}${adminMark()}</span>
         <button class="icon-btn" id="account-open" aria-label="Profil öffnen">◎</button>
@@ -199,15 +199,14 @@ function pageHead(eyebrow,title,desc="") {
 function empty(message) { return '<div class="empty">'+esc(message)+'</div>'; }
 
 async function renderHome() {
-  const [events,announcements,leaders,chats,marketItems,balance] = await Promise.all([
+  const [events,announcements,leaders,chats,marketItems] = await Promise.all([
     db.from("events").select("name,description,starts_at,ends_at").eq("active",true).limit(1),
     db.from("announcements").select("title,message,created_at").eq("active",true).order("created_at",{ascending:false}).limit(2),
     db.from("player_statistics").select("user_id,rating,wins,games_played,total_score,profiles(username,display_name,verified)").order("rating",{ascending:false}).limit(3),
     db.from("chat_messages").select("id,user_id,message,created_at,profiles(username,display_name,verified)").is("deleted_at",null).order("created_at",{ascending:false}).limit(3),
     db.from("market_items").select("id,symbol,name").eq("active",true).order("symbol").limit(3),
-    currentUser?db.from("user_balances").select("balance").eq("user_id",currentUser.id).maybeSingle():Promise.resolve({data:null,error:null})
   ]);
-  for (const result of [events,announcements,leaders,chats,marketItems,balance]) {
+  for (const result of [events,announcements,leaders,chats,marketItems]) {
     if(result?.error) console.warn("Home section:",result.error.message);
   }
   const event=events.data?.[0];
@@ -238,7 +237,7 @@ async function renderHome() {
         <a href="#chat"><span class="quick-stat-icon">◉</span><strong>Community Chat</strong><small>Live-Unterhaltungen</small></a>
         <a href="#minigames"><span class="quick-stat-icon">⚔</span><strong>Minigames</strong><small>Skill & Challenges</small></a>
         <a href="#leaderboards"><span class="quick-stat-icon">♛</span><strong>Leaderboard</strong><small>Spieler-Rankings</small></a>
-        <a href="#market"><span class="quick-stat-icon">◆</span><strong>${number(balance.data?.balance??0)}</strong><small>Deine Coins</small></a>
+        
       </div>
     </section>
     <section class="home-dashboard-grid">
@@ -382,10 +381,10 @@ async function renderBuilding() {
   const orderMessages=messageResults.flat();
   const cards=(orders??[]).map(o=>{
     const history=orderMessages.filter(m=>m.order_id===o.id).map(m=>'<div class="chat-message"><div class="who">'+esc(m.username||"Team")+' <span class="when">'+dateTime(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>').join("");
-    return '<article class="list-item"><div class="item-head"><strong>'+esc(o.title)+'</strong><span class="pill">'+esc(o.status)+'</span></div><p>'+esc(o.description)+'</p><div class="inline-meta">Budget: '+(o.budget===null?"Offen":number(o.budget)+" ◆")+' · '+dateTime(o.created_at)+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch keine Nachrichten vom Team.</div>')+'</div><form class="chat-compose" data-building-message="'+o.id+'"><input class="input" name="message" maxlength="2000" placeholder="Nachricht an das Team …" required><button class="btn small">Senden</button></form></article>';
+    return '<article class="list-item"><div class="item-head"><strong>'+esc(o.title)+'</strong><span class="pill">'+esc(o.status)+'</span></div><p>'+esc(o.description)+'</p><div class="inline-meta">Budget: '+(o.budget===null?"Offen":number(o.budget))+' · '+dateTime(o.created_at)+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch keine Nachrichten vom Team.</div>')+'</div><form class="chat-compose" data-building-message="'+o.id+'"><input class="input" name="message" maxlength="2000" placeholder="Nachricht an das Team …" required><button class="btn small">Senden</button></form></article>';
   }).join("");
   return pageHead("PLAYER SERVICE","Building Service","Was soll gebaut werden? Das Team kann den Status aktualisieren und mit dir schreiben.")+
-    '<div class="grid two"><section class="card"><h2>Neuen Auftrag erstellen</h2><form class="form" id="building-form"><div class="field"><label>Titel</label><input class="input" name="title" maxlength="100" required></div><div class="field"><label>Beschreibung</label><textarea name="description" maxlength="4000" required></textarea></div><div class="field"><label>Budget in ◆ (optional)</label><input class="input" name="budget" type="number" min="0"></div><button class="btn">Auftrag senden</button></form></section><section class="card"><h2>Deine Aufträge</h2><div class="list">'+(cards||empty("Du hast noch keine Aufträge erstellt."))+'</div></section></div>';
+    '<div class="grid two"><section class="card"><h2>Neuen Auftrag erstellen</h2><form class="form" id="building-form"><div class="field"><label>Titel</label><input class="input" name="title" maxlength="100" required></div><div class="field"><label>Beschreibung</label><textarea name="description" maxlength="4000" required></textarea></div><div class="field"><label>Budget (optional)</label><input class="input" name="budget" type="number" min="0"></div><button class="btn">Auftrag senden</button></form></section><section class="card"><h2>Deine Aufträge</h2><div class="list">'+(cards||empty("Du hast noch keine Aufträge erstellt."))+'</div></section></div>';
 }
 
 async function renderApplications() {
@@ -407,8 +406,7 @@ async function renderApplications() {
 
 async function renderProfile() {
   if(!currentUser)return pageHead("ACCOUNT","Profil","Melde dich an, um dein Profil anzusehen.")+'<div class="card">'+empty("Du bist noch nicht angemeldet.")+'<button class="btn" data-route="login">Anmelden</button></div>';
-  const [balance,stats,minecraft,roles]=await Promise.all([
-    db.from("user_balances").select("balance").eq("user_id",currentUser.id).maybeSingle(),
+  const [stats,minecraft,roles]=await Promise.all([
     db.from("player_statistics").select("*").eq("user_id",currentUser.id).maybeSingle(),
     db.from("minecraft_accounts").select("minecraft_name,verification_status,verified_at").eq("user_id",currentUser.id).maybeSingle(),
     db.from("user_roles").select("roles(display_name,name)").eq("user_id",currentUser.id)
