@@ -97,20 +97,12 @@ async function refreshTicketNav(){
     const total=Number(count||0); badge.textContent=String(total); badge.hidden=total===0;
   }catch(error){console.warn("Ticket navigation:",error.message);}
 }
-function kcRank(balance){
-  const kc=Number(balance||0);
-  const tiers=[
-    [1000000,"KRAKE LEGEND"],
-    [500000,"KRAKEN"],
-    [250000,"OVERLORD"],
-    [100000,"TITAN"],
-    [50000,"BARON"],
-    [25000,"TRADER"],
-    [10000,"SCOUT"],
-    [5000,"KRAKE"],
-    [0,"STARTER"]
-  ];
-  return tiers.find(([min])=>kc>=min)?.[1]||"STARTER";
+function kcRank(rank){
+  const place=Number(rank||0);
+  if(place===1)return "Ultimate Trader";
+  if(place===2)return "Master Trader";
+  if(place===3)return "Elite Trader";
+  return "Trader";
 }
 function xpTitle(level){
   const lv=Math.max(1,Number(level||1));
@@ -588,11 +580,18 @@ async function renderProfile() {
   const kc=Number(balanceRow.data?.balance||0);
   const xp=Number(progress.data?.xp||0);
   const level=Math.max(1,Number(progress.data?.level||1));
-  const customRank=kcRank(kc);
+  let kcRanking=null;
+  try{
+    const {data,error}=await db.rpc("economy_player_rank");
+    if(error)throw error;
+    kcRanking=Array.isArray(data)?data[0]:data;
+  }catch(error){console.warn("KC ranking unavailable:",error.message);}
+  const kcPlace=Number(kcRanking?.rank||0);
+  const customRank=kcPlace>0?kcRank(kcPlace):"Trader";
   const xpRank=xpTitle(level);
   return pageHead("PLAYER ID","Profil","Deine KRAKE SMP Community-Identität.")+
     '<section class="card"><div class="item-head"><div><div class="eyebrow">MEMBER PROFILE</div><h2 class="profile-name-line">'+esc(profile?.display_name||profile?.username||"Player")+' <span class="custom-kc-rank">'+esc(customRank)+'</span>'+badge(profile?.verified)+'</h2><div class="muted">@'+esc(profile?.username||"")+'</div></div><span class="pill red">'+esc(roleNames)+'</span></div>'+
-    '<div class="profile-rank-strip"><span class="pill kc-rank-pill">◆ '+esc(customRank)+'</span><span class="pill xp-rank-pill">⚡ '+esc(xpRank)+' · Level '+level+'</span><span class="pill">XP '+number(xp)+'</span><span class="pill">KC '+compactPrice(kc)+'</span></div>'+
+    '<div class="profile-rank-strip"><span class="pill kc-rank-pill">◆ '+esc(customRank)+(kcPlace>0?' · #'+kcPlace:'')+'</span><span class="pill xp-rank-pill">⚡ '+esc(xpRank)+' · Level '+level+'</span><span class="pill">XP '+number(xp)+'</span><span class="pill">KC '+compactPrice(kc)+'</span></div>'+
     '<div class="section grid four"><div class="card stat-card"><div class="stat-label">Wins</div><div class="stat-number">'+number(wins)+'</div></div><div class="card stat-card"><div class="stat-label">Spiele</div><div class="stat-number">'+number(gamesPlayed)+'</div></div><div class="card stat-card"><div class="stat-label">Ranking Points</div><div class="stat-number">'+number(rp)+' RP</div></div><div class="card stat-card"><div class="stat-label">Elo Rating</div><div class="stat-number">'+number(stats.data?.rating??1000)+'</div></div></div>'+
     '<div class="section grid two"><div class="list-item"><div class="muted">Minecraft Account</div><strong>'+esc(minecraft.data?.minecraft_name||"Nicht verknüpft")+'</strong><div class="inline-meta">Status: '+esc(minecraft.data?.verification_status||"unverified")+'</div></div><div class="list-item"><div class="muted">Mitglied seit</div><strong>'+dateTime(profile?.created_at)+'</strong><div class="inline-meta">Letzter Login: '+dateTime(profile?.last_login_at)+'</div></div></div>'+
     '<div class="action-row"><button class="btn secondary" data-route="settings">Einstellungen</button><button class="btn ghost" id="logout-btn">Abmelden</button></div></section>';
