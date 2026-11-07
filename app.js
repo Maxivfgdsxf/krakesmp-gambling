@@ -152,10 +152,9 @@ function pageHead(eyebrow,title,desc="") {
 function empty(message) { return '<div class="empty">'+esc(message)+'</div>'; }
 
 async function renderHome() {
-  const [events,announcements,stats] = await Promise.all([
+  const [events,announcements] = await Promise.all([
     db.from("events").select("name,description,starts_at,ends_at").eq("active",true).limit(1),
-    db.from("announcements").select("title,message,created_at").eq("active",true).order("created_at",{ascending:false}).limit(2),
-    currentUser ? db.from("player_statistics").select("games_played,wins,rating").eq("user_id",currentUser.id).maybeSingle() : Promise.resolve({data:null})
+    db.from("announcements").select("title,message,created_at").eq("active",true).order("created_at",{ascending:false}).limit(2)
   ]);
   const event = events.data?.[0];
   const hello = profile?.display_name || profile?.username || "Spieler";
