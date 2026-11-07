@@ -215,7 +215,7 @@ async function renderHome() {
   const [events,announcements,leaders,chats,marketItems] = await Promise.all([
     db.from("events").select("name,description,starts_at,ends_at").eq("active",true).limit(1),
     db.from("announcements").select("title,message,created_at").eq("active",true).order("created_at",{ascending:false}).limit(2),
-    Promise.all([db.from("minigames").select("id,name").eq("active",true),db.from("minigame_results").select("minigame_id,user_id,score,time_ms,created_at,profiles(username,display_name,verified)").order("created_at",{ascending:false}).limit(5000)]),
+    db.from("player_statistics").select("user_id,rating,wins,games_played,total_score,profiles(username,display_name,verified)").order("rating",{ascending:false}).limit(3),
     db.from("chat_messages").select("id,user_id,message,created_at,profiles(username,display_name,verified)").is("deleted_at",null).order("created_at",{ascending:false}).limit(3),
     db.from("market_items").select("id,symbol,name").eq("active",true).order("symbol").limit(3),
   ]);
@@ -225,7 +225,8 @@ async function renderHome() {
   const event=events.data?.[0];
   const hello=profile?.display_name||profile?.username||"Spieler";
   const announcementHtml=(announcements.data??[]).map(a=>'<article class="list-item"><div class="item-title">'+esc(a.title)+'</div><p>'+esc(a.message)+'</p><div class="inline-meta">'+dateTime(a.created_at)+'</div></article>').join("");
-  const homeGames=leaders?.[0]?.data||[];const homeResults=leaders?.[1]?.data||[];const homeLb=buildLeaderboardGroups(homeGames,homeResults);const homePlayers=[...new Set(homeResults.map(r=>r.user_id))].map(user_id=>{const r=homeResults.find(x=>x.user_id===user_id);return {user_id,profiles:r?.profiles};}).sort((a,b)=>(homeLb.rpByUser.get(b.user_id)||0)-(homeLb.rpByUser.get(a.user_id)||0)).slice(0,3);const leaderHtml=homePlayers.map((p,i)=>'<div class="leader-row"><span class="leader-rank">'+(i+1)+'</span><span class="leader-avatar">♟</span><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong><span>'+number(homeLb.rpByUser.get(p.user_id)||0)+' RP</span></div>').join("");  const chatHtml=(chats.data??[]).map(m=>'<div class="home-chat-row"><strong>'+esc(m.profiles?.display_name||m.profiles?.username||"Player")+'</strong><span>'+dateTime(m.created_at)+'</span><p>'+esc(m.message)+'</p></div>').join("");
+  const leaderHtml=(leaders.data??[]).map((p,i)=>'<div class="leader-row"><span class="leader-rank">'+(i+1)+'</span><span class="leader-avatar">♟</span><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong><span>'+number(p.rating)+' RP</span></div>').join("");
+  const chatHtml=(chats.data??[]).map(m=>'<div class="home-chat-row"><strong>'+esc(m.profiles?.display_name||m.profiles?.username||"Player")+'</strong><span>'+dateTime(m.created_at)+'</span><p>'+esc(m.message)+'</p></div>').join("");
   const marketHtml=(marketItems.data??[]).map(m=>'<div class="market-mini-row"><span class="market-mini-icon">◆</span><div><strong>'+esc(m.name)+'</strong><small>'+esc(m.symbol)+'</small></div></div>').join("");
   return `
     <section class="home-hero">
@@ -299,6 +300,7 @@ async function renderLogin() {
 }
 
 async function renderChat() {
+  const {data:chatSetting}=await db.from("chat_settings").select("mode,slow_seconds").eq("id",1).maybeSingle();
   const messages = await db.from("chat_messages")
     .select("id,user_id,message,created_at")
     .is("deleted_at",null).order("created_at",{ascending:false}).limit(100);
@@ -323,78 +325,17 @@ async function renderChat() {
       <p>${esc(m.message)}</p>
     </article>
   `).join("");
-  return pageHead("COMMUNITY","Globaler Chat","Schreib mit der KRAKE Community. Chat-Regeln gelten für alle Mitglieder.")+
+  const mode=chatSetting?.mode||"normal";const modeLabel=mode==="admin"?"Nur Admins":mode==="media"?"Media-Modus":mode==="slow"?"Slow Mode":"Normal";const modeNotice='<div class="notice chat-mode-notice"><strong>Chat-Modus: '+modeLabel+'</strong>'+(mode==="slow"?' · '+number(chatSetting?.slow_seconds||5)+' Sekunden zwischen deinen Nachrichten':"")+'</div>';
+  return pageHead("COMMUNITY","Globaler Chat","Schreib mit der KRAKE Community. Chat-Regeln gelten für alle Mitglieder.")+modeNotice+
     '<section class="card"><div class="chat-window" id="chat-window">'+(items||empty("Noch keine Nachrichten. Starte die Unterhaltung!"))+'</div>'+
     (currentUser?'<form id="chat-form" class="chat-compose"><input class="input" id="chat-input" maxlength="2000" placeholder="Nachricht schreiben …" required><button class="btn" type="submit">Senden</button></form>':'<div class="notice" style="margin-top:12px">Zum Schreiben bitte <button class="btn small" data-route="login">anmelden</button>.</div>')+
     '<p class="form-note">Nachrichten werden moderiert. Melde problematische Inhalte über „Melden“.</p></section>';
 }
-function placementRP(rank){
-  const points=[100,75,60,50,45,40,35,30,25,20];
-  return points[rank-1] ?? 15;
-}
-function leaderboardSort(a,b){
-  if(a.bestTime!==null && b.bestTime!==null && a.bestTime!==b.bestTime) return a.bestTime-b.bestTime;
-  if(a.bestTime!==null && b.bestTime===null) return -1;
-  if(a.bestTime===null && b.bestTime!==null) return 1;
-  const scoreDiff=Number(b.score||0)-Number(a.score||0);
-  if(scoreDiff!==0) return scoreDiff;
-  return Number(b.rounds||0)-Number(a.rounds||0);
-}
-function buildLeaderboardGroups(games,results){
-  const groups=new Map((games??[]).map(g=>[g.id,new Map()]));
-  for(const r of (results??[])){
-    const players=groups.get(r.minigame_id);
-    if(!players) continue;
-    const current=players.get(r.user_id);
-    const time=Number.isFinite(Number(r.time_ms)) && Number(r.time_ms)>0 ? Number(r.time_ms) : null;
-    if(!current) players.set(r.user_id,{...r,rounds:1,bestTime:time});
-    else {
-      current.rounds++;
-      if(time!==null && (current.bestTime===null || time<current.bestTime)) current.bestTime=time;
-      if(Number(r.score||0)>Number(current.score||0)) current.score=r.score;
-      if(new Date(r.created_at)>new Date(current.created_at)) current.created_at=r.created_at;
-      if(r.profiles) current.profiles=r.profiles;
-    }
-  }
-  const rpByUser=new Map();
-  for(const g of (games??[])){
-    const rows=[...(groups.get(g.id)||new Map()).values()].sort(leaderboardSort).slice(0,25);
-    rows.forEach((p,i)=>{
-      p.placement=i+1;
-      p.placementRP=placementRP(i+1);
-      rpByUser.set(p.user_id,(rpByUser.get(p.user_id)||0)+p.placementRP);
-    });
-  }
-  return {groups,rpByUser};
-}
+function placementRP(rank){const points=[100,75,60,50,45,40,35,30,25,20];return points[rank-1]??15;}
+function leaderboardSort(a,b){if(a.bestTime!==null&&b.bestTime!==null&&a.bestTime!==b.bestTime)return a.bestTime-b.bestTime;if(a.bestTime!==null&&b.bestTime===null)return -1;if(a.bestTime===null&&b.bestTime!==null)return 1;const s=Number(b.score||0)-Number(a.score||0);return s!==0?s:Number(b.rounds||0)-Number(a.rounds||0);}
+function buildLeaderboardGroups(games,results){const groups=new Map((games??[]).map(g=>[g.id,new Map()]));for(const r of results??[]){const p=groups.get(r.minigame_id);if(!p)continue;const cur=p.get(r.user_id);const time=Number(r.time_ms)>0?Number(r.time_ms):null;if(!cur)p.set(r.user_id,{...r,rounds:1,bestTime:time});else{cur.rounds++;if(time!==null&&(cur.bestTime===null||time<cur.bestTime))cur.bestTime=time;if(Number(r.score||0)>Number(cur.score||0))cur.score=r.score;if(r.profiles)cur.profiles=r.profiles;}}const rpByUser=new Map();for(const g of games??[]){[...(groups.get(g.id)||new Map()).values()].sort(leaderboardSort).slice(0,25).forEach((p,i)=>{p.placement=i+1;p.placementRP=placementRP(i+1);rpByUser.set(p.user_id,(rpByUser.get(p.user_id)||0)+p.placementRP);});}return {groups,rpByUser};}
 
-async function renderLeaderboards() {
-  const {data:games,error:gamesError}=await db.from("minigames").select("id,slug,name,description").eq("active",true).order("name");
-  if(gamesError) throw gamesError;
-  const {data:results,error:resultsError}=await db.from("minigame_results").select("minigame_id,user_id,score,time_ms,won,created_at,profiles(username,display_name,verified)").order("created_at",{ascending:false}).limit(5000);
-  if(resultsError) throw resultsError;
-  const lbIds=[...new Set((results??[]).map(r=>r.user_id).filter(Boolean))];
-  const lbRoles=new Map();
-  if(lbIds.length){
-    const {data:roleRows}=await db.from("user_roles").select("user_id,roles(name,display_name,priority)").in("user_id",lbIds);
-    (roleRows??[]).forEach(r=>{if(!lbRoles.has(r.user_id))lbRoles.set(r.user_id,[]);if(r.roles)lbRoles.get(r.user_id).push(r.roles);});
-  }
-  (results??[]).forEach(r=>{r.profiles={...(r.profiles||{}),roles:lbRoles.get(r.user_id)||[]};});
-  const {groups,rpByUser}=buildLeaderboardGroups(games,results);
-  const formatTime=(ms)=>{if(ms===null||ms===undefined)return "—";const n=Math.max(0,Math.round(Number(ms)));return n>=1000?(n/1000).toFixed(2)+" s":n+" ms";};
-  const globalPlayers=new Map();
-  for(const g of (games??[])) for(const p of (groups.get(g.id)||new Map()).values()) if(!globalPlayers.has(p.user_id)) globalPlayers.set(p.user_id,p);
-  const globalRows=[...globalPlayers.values()].sort((a,b)=>(rpByUser.get(b.user_id)||0)-(rpByUser.get(a.user_id)||0)).slice(0,25);
-  const globalBody=globalRows.map((p,i)=>'<tr><td><span class="rank '+(i===0?"gold":i===1?"silver":i===2?"bronze":"")+'">'+(i+1)+'</span></td><td><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong> '+badge(p.profiles?.verified)+' '+roleBadges(p.profiles?.roles)+'</td><td><strong>'+number(rpByUser.get(p.user_id)||0)+' RP</strong></td></tr>').join("");
-  const cards=(games??[]).map((g,index)=>{
-    const rows=[...(groups.get(g.id)||new Map()).values()].sort(leaderboardSort).slice(0,25);
-    const body=rows.map((p,i)=>'<tr><td><span class="rank '+(i===0?"gold":i===1?"silver":i===2?"bronze":"")+'">'+(i+1)+'</span></td><td><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong> '+badge(p.profiles?.verified)+' '+roleBadges(p.profiles?.roles)+'</td><td><strong>'+formatTime(p.bestTime)+'</strong></td><td><strong>'+number(p.placementRP)+' RP</strong></td><td>'+number(p.rounds)+'</td></tr>').join("");
-    return '<section class="leaderboard-game card" data-board="'+esc(g.slug)+'" '+(index===0?"":"hidden")+'><div class="section-head"><div><div class="eyebrow">KRAKE COMPETITIVE</div><h2>'+esc(g.name)+' Leaderboard</h2><p>'+esc(g.description||"Spieler-Rankings")+'</p></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>Bestzeit</th><th>RP</th><th>Gespielte Runden</th></tr></thead><tbody>'+(body||'<tr><td colspan="5">Noch keine Ergebnisse.</td></tr>')+'</tbody></table></div></section>';
-  }).join("");
-  const tabs=(games??[]).map((g,i)=>'<button class="leaderboard-tab '+(i===0?"active":"")+'" data-leaderboard-game="'+esc(g.slug)+'">'+esc(g.name)+'</button>').join("");
-  const globalCard='<section class="card leaderboard-global"><div class="section-head"><div><div class="eyebrow">RANKING POINTS</div><h2>Globales RP Ranking</h2><p>RP werden automatisch aus den Platzierungen in jedem Minigame berechnet.</p></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>Gesamt-RP</th></tr></thead><tbody>'+(globalBody||'<tr><td colspan="3">Noch keine Platzierungen.</td></tr>')+'</tbody></table></div></section>';
-  return pageHead("COMPETITIVE","Leaderboards","Platzierung = RP. Je besser deine Platzierung in den Minigames, desto mehr RP sammelst du.")+globalCard+'<section class="card leaderboard-shell"><div class="leaderboard-tabs">'+tabs+'</div><div class="leaderboard-panels">'+cards+'</div></section>';
-}
+async function renderLeaderboards(){const {data:games,error:ge}=await db.from("minigames").select("id,slug,name,description").eq("active",true).order("name");if(ge)throw ge;const {data:results,error:re}=await db.from("minigame_results").select("minigame_id,user_id,score,time_ms,won,created_at,profiles(username,display_name,verified)").order("created_at",{ascending:false}).limit(5000);if(re)throw re;const ids=[...new Set((results??[]).map(r=>r.user_id).filter(Boolean))];const roles=new Map();if(ids.length){const {data:rr}=await db.from("user_roles").select("user_id,roles(name,display_name,priority)").in("user_id",ids);(rr??[]).forEach(r=>{if(!roles.has(r.user_id))roles.set(r.user_id,[]);if(r.roles)roles.get(r.user_id).push(r.roles);});}(results??[]).forEach(r=>{r.profiles={...(r.profiles||{}),roles:roles.get(r.user_id)||[]};});const {groups,rpByUser}=buildLeaderboardGroups(games,results);const time=ms=>{if(ms===null||ms===undefined)return"—";const n=Math.round(Number(ms));return n>=1000?(n/1000).toFixed(2)+" s":n+" ms";};const global=new Map();for(const g of games??[])for(const p of (groups.get(g.id)||new Map()).values())if(!global.has(p.user_id))global.set(p.user_id,p);const globalRows=[...global.values()].sort((a,b)=>(rpByUser.get(b.user_id)||0)-(rpByUser.get(a.user_id)||0)).slice(0,25);const globalBody=globalRows.map((p,i)=>'<tr><td><span class="rank '+(i<3?["gold","silver","bronze"][i]:"")+'">'+(i+1)+'</span></td><td><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong> '+roleBadges(p.profiles?.roles)+' '+badge(p.profiles?.verified)+'</td><td><strong>'+number(rpByUser.get(p.user_id)||0)+' RP</strong></td></tr>').join("");const cards=(games??[]).map((g,index)=>{const rows=[...(groups.get(g.id)||new Map()).values()].sort(leaderboardSort).slice(0,25);const body=rows.map((p,i)=>'<tr><td><span class="rank '+(i<3?["gold","silver","bronze"][i]:"")+'">'+(i+1)+'</span></td><td><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong> '+roleBadges(p.profiles?.roles)+' '+badge(p.profiles?.verified)+'</td><td><strong>'+time(p.bestTime)+'</strong></td><td><strong>'+number(p.placementRP)+' RP</strong></td><td>'+number(p.rounds)+'</td></tr>').join("");return '<section class="leaderboard-game card" data-board="'+esc(g.slug)+'" '+(index?"hidden":"")+'><div class="section-head"><div><div class="eyebrow">KRAKE COMPETITIVE</div><h2>'+esc(g.name)+' Leaderboard</h2><p>'+esc(g.description||"Spieler-Rankings")+'</p></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>Bestzeit</th><th>RP</th><th>Runden</th></tr></thead><tbody>'+(body||'<tr><td colspan="5">Noch keine Ergebnisse.</td></tr>')+'</tbody></table></div></section>';}).join("");const tabs=(games??[]).map((g,i)=>'<button class="leaderboard-tab '+(!i?"active":"")+'" data-leaderboard-game="'+esc(g.slug)+'">'+esc(g.name)+'</button>').join("");return pageHead("COMPETITIVE","Leaderboards","RP wird automatisch aus deinen Platzierungen berechnet.")+'<section class="card leaderboard-global"><div class="section-head"><div><div class="eyebrow">RANKING POINTS</div><h2>Globales RP Ranking</h2></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>RP</th></tr></thead><tbody>'+(globalBody||'<tr><td colspan="3">Noch keine Platzierungen.</td></tr>')+'</tbody></table></div></section><section class="card leaderboard-shell"><div class="leaderboard-tabs">'+tabs+'</div><div class="leaderboard-panels">'+cards+'</div></section>';}
 async function renderMarket() {
   const [items,prices]=await Promise.all([
     db.from("market_items").select("id,symbol,name,description,stock").eq("active",true).order("name"),
@@ -469,14 +410,14 @@ async function renderApplications() {
 
 async function renderProfile() {
   if(!currentUser)return pageHead("ACCOUNT","Profil","Melde dich an, um dein Profil anzusehen.")+'<div class="card">'+empty("Du bist noch nicht angemeldet.")+'<button class="btn" data-route="login">Anmelden</button></div>';
-  const [stats,minecraft,roles,profileGames,profileResults]=await Promise.all([
+  const [stats,minecraft,roles]=await Promise.all([
     db.from("player_statistics").select("*").eq("user_id",currentUser.id).maybeSingle(),
     db.from("minecraft_accounts").select("minecraft_name,verification_status,verified_at").eq("user_id",currentUser.id).maybeSingle(),
-    db.from("user_roles").select("roles(display_name,name)").eq("user_id",currentUser.id),db.from("minigames").select("id,name").eq("active",true),db.from("minigame_results").select("minigame_id,user_id,score,time_ms,created_at,profiles(username,display_name,verified)").eq("user_id",currentUser.id).order("created_at",{ascending:false}).limit(5000)
+    db.from("user_roles").select("roles(display_name,name)").eq("user_id",currentUser.id)
   ]);
-  const roleNames=(roles.data??[]).map(r=>r.roles?.display_name||r.roles?.name).filter(Boolean).join(", ")||"User";const myRp=buildLeaderboardGroups(profileGames.data||[],profileResults.data||[]).rpByUser.get(currentUser.id)||0;
+  const roleNames=(roles.data??[]).map(r=>r.roles?.display_name||r.roles?.name).filter(Boolean).join(", ")||"User";
   return pageHead("PLAYER ID","Profil","Deine KRAKE SMP Community-Identität.")+
-    '<section class="card"><div class="item-head"><div><div class="eyebrow">MEMBER PROFILE</div><h2>'+esc(profile?.display_name||profile?.username||"Player")+badge(profile?.verified)+'</h2><div class="muted">@'+esc(profile?.username||"")+'</div></div><span class="pill red">'+esc(roleNames)+'</span></div><div class="section grid four"><div class="card stat-card"><div class="stat-label">Wins</div><div class="stat-number">'+number(stats.data?.wins)+'</div></div><div class="card stat-card"><div class="stat-label">Games</div><div class="stat-number">'+number(stats.data?.games_played)+'</div></div><div class="card stat-card"><div class="stat-label">RP</div><div class="stat-number">'+number(myRp)+'</div></div></div><div class="section grid two"><div class="list-item"><div class="muted">Minecraft Account</div><strong>'+esc(minecraft.data?.minecraft_name||"Nicht verknüpft")+'</strong><div class="inline-meta">Status: '+esc(minecraft.data?.verification_status||"unverified")+'</div></div><div class="list-item"><div class="muted">Mitglied seit</div><strong>'+dateTime(profile?.created_at)+'</strong><div class="inline-meta">Letzter Login: '+dateTime(profile?.last_login_at)+'</div></div></div><div class="action-row"><button class="btn secondary" data-route="settings">Einstellungen</button><button class="btn ghost" id="logout-btn">Abmelden</button></div></section>';
+    '<section class="card"><div class="item-head"><div><div class="eyebrow">MEMBER PROFILE</div><h2>'+esc(profile?.display_name||profile?.username||"Player")+badge(profile?.verified)+'</h2><div class="muted">@'+esc(profile?.username||"")+'</div></div><span class="pill red">'+esc(roleNames)+'</span></div><div class="section grid four"><div class="card stat-card"><div class="stat-label">Wins</div><div class="stat-number">'+number(stats.data?.wins)+'</div></div><div class="card stat-card"><div class="stat-label">Games</div><div class="stat-number">'+number(stats.data?.games_played)+'</div></div><div class="card stat-card"><div class="stat-label">Rating</div><div class="stat-number">'+number(stats.data?.rating??1000)+'</div></div></div><div class="section grid two"><div class="list-item"><div class="muted">Minecraft Account</div><strong>'+esc(minecraft.data?.minecraft_name||"Nicht verknüpft")+'</strong><div class="inline-meta">Status: '+esc(minecraft.data?.verification_status||"unverified")+'</div></div><div class="list-item"><div class="muted">Mitglied seit</div><strong>'+dateTime(profile?.created_at)+'</strong><div class="inline-meta">Letzter Login: '+dateTime(profile?.last_login_at)+'</div></div></div><div class="action-row"><button class="btn secondary" data-route="settings">Einstellungen</button><button class="btn ghost" id="logout-btn">Abmelden</button></div></section>';
 }
 
 async function renderSettings() {
@@ -644,6 +585,8 @@ async function loadChatMessages() {
   node.innerHTML=lastChatMessages.map(m=>'<article class="chat-message"><div><span class="who">'+esc(m.profiles?.display_name||m.profiles?.username||"Player")+badge(m.profiles?.verified)+'</span><span class="when">'+dateTime(m.created_at)+'</span>'+(currentUser&&currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':"")+'</div><p>'+esc(m.message)+'</p></article>').join("")||empty("Noch keine Nachrichten. Starte die Unterhaltung!");
   node.scrollTop=node.scrollHeight;
 }
+function showConfirm(title,message,confirmText="Bestätigen"){return new Promise(resolve=>{const old=$("krake-confirm");if(old)old.remove();const el=document.createElement("div");el.id="krake-confirm";el.className="krake-modal";el.innerHTML='<div class="krake-modal-backdrop"></div><div class="krake-modal-card confirm-modal"><button class="modal-close" type="button" data-confirm-no>×</button><div class="eyebrow">BESTÄTIGUNG</div><h2>'+esc(title)+'</h2><p class="muted">'+esc(message)+'</p><div class="action-row"><button class="btn danger" data-confirm-yes>'+esc(confirmText)+'</button><button class="btn secondary" data-confirm-no>Abbrechen</button></div></div>';document.body.appendChild(el);const done=v=>{el.remove();resolve(v);};el.querySelectorAll("[data-confirm-no]").forEach(b=>b.onclick=()=>done(false));el.querySelector("[data-confirm-yes]").onclick=()=>done(true);el.querySelector(".krake-modal-backdrop").onclick=()=>done(false);});}
+
 function wireChat() {
   $("chat-form")?.addEventListener("submit",async event=>{
     event.preventDefault();
@@ -665,11 +608,10 @@ function wireChat() {
     const mod=event.target.closest("[data-chat-delete],[data-chat-mute],[data-chat-ban]");
     if(mod&&isAdmin()){
       try{
-        if(mod.dataset.chatDelete){await callAdmin("delete_chat_message",{message_id:Number(mod.dataset.chatDelete)});toast("Nachricht gelöscht.","success");await loadChatMessages();return;}
-        const uid=mod.dataset.chatMute||mod.dataset.chatBan; const reason=prompt("Grund?","Moderation"); if(reason===null)return;
-        const hours=mod.dataset.chatMute?Number(prompt("Timeout in Stunden?","1")):0;
-        await callAdmin(mod.dataset.chatMute?"mute":"ban",{user_id:uid,reason,expires_at:hours>0?new Date(Date.now()+hours*3600000).toISOString():null});
-        toast(mod.dataset.chatMute?"Timeout gesetzt.":"Benutzer gesperrt.","success");await loadChatMessages();return;
+        if(mod.dataset.chatDelete){if(!await showConfirm("Nachricht löschen?","Diese Nachricht wird für den Chat ausgeblendet.","Löschen"))return;await callAdmin("delete_chat_message",{message_id:Number(mod.dataset.chatDelete)});toast("Nachricht gelöscht.","success");await loadChatMessages();return;}
+        const uid=mod.dataset.chatMute||mod.dataset.chatBan;
+        if(mod.dataset.chatMute){if(!await showConfirm("Timeout setzen?","Der Benutzer kann für die gewählte Zeit nicht schreiben.","Timeout setzen"))return;const hours=Number(prompt("Timeout in Stunden?","1"));if(!Number.isFinite(hours)||hours<=0)return;await callAdmin("mute",{user_id:uid,reason:"Chat-Moderation",expires_at:new Date(Date.now()+hours*3600000).toISOString()});toast("Timeout gesetzt.","success");await loadChatMessages();return;}
+        if(!await showConfirm("Benutzer sperren?","Der Benutzer wird für den Chat gesperrt.","Sperren"))return;await callAdmin("ban",{user_id:uid,reason:"Chat-Moderation",expires_at:null});toast("Benutzer gesperrt.","success");await loadChatMessages();return;
       }catch(error){toast(error.message||"Moderationsaktion fehlgeschlagen.","error");return;}
     }
 
@@ -860,7 +802,7 @@ async function loadAdminSection(section) {
       }).join("")||empty("Keine Building-Aufträge."))+'</div></div>';
     } else if(section==="market"){
       const {data,error}=await db.from("market_items").select("id,symbol,name,active,stock").order("symbol");if(error)throw error;
-      node.innerHTML='<div class="card"><h2>Virtuelle Market-Preise</h2><div class="list">'+((data??[]).map(item=>'<form class="list-item market-admin-form" data-item="'+item.id+'"><div class="item-head"><strong>'+esc(item.name)+' · '+esc(item.symbol)+'</strong><span class="pill">'+(item.active?"aktiv":"inaktiv")+'</span></div><div class="form-grid"><div class="field"><label>Neuer Preis (z.B. 2b, 750m, 500k)</label><input class="input" name="price" inputmode="decimal" placeholder="2b" required></div><div class="field"><label>Stock</label><input class="input" name="stock" type="number" min="0" step="1" value="'+item.stock+'"></div><div class="field"><label>Änderungsgrund</label><input class="input" name="reason" maxlength="200" placeholder="Marktanpassung"></div></div><button class="btn small">Preis + Stock speichern</button></form>').join("")||empty("Keine Assets angelegt."))+'</div></div>';
+      node.innerHTML='<div class="card"><h2>Virtuelle Market-Preise</h2><div class="list">'+((data??[]).map(item=>'<form class="list-item market-admin-form" data-item="'+item.id+'"><div class="item-head"><strong>'+esc(item.name)+' · '+esc(item.symbol)+'</strong><span class="pill">'+(item.active?"aktiv":"inaktiv")+'</span></div><div class="form-grid"><div class="field"><label>Neuer Preis (z.B. 2b, 750m, 500k)</label><input class="input" name="price" inputmode="decimal" placeholder="2b" required></div><div class="field"><label>Änderungsgrund</label><input class="input" name="reason" maxlength="200" placeholder="Marktanpassung"></div></div><button class="btn small">Preis speichern</button></form>').join("")||empty("Keine Assets angelegt."))+'</div></div>';
     } else if(section==="market_tickets"){
       const {data,error}=await db.from("market_tickets").select("id,user_id,quantity,message,status,created_at,market_items(name,symbol),profiles(username,display_name)").order("created_at",{ascending:false}).limit(100);
       if(error)throw error;
@@ -883,7 +825,10 @@ async function loadAdminSection(section) {
       node.innerHTML='<div class="card"><h2>Audit Logs</h2><div class="table-wrap"><table><thead><tr><th>Zeit</th><th>Aktion</th><th>Actor</th><th>Target</th><th>Details</th></tr></thead><tbody>'+((data??[]).map(a=>'<tr><td>'+dateTime(a.created_at)+'</td><td>'+esc(a.action)+'</td><td>'+esc(a.actor_user_id)+'</td><td>'+esc(a.target_user_id)+'</td><td>'+esc(JSON.stringify(a.metadata))+'</td></tr>').join("")||'<tr><td colspan="5">Noch keine Aktionen.</td></tr>')+'</tbody></table></div></div>';
     } else if(section==="maintenance"){
       const {data,error}=await db.from("maintenance_windows").select("*").eq("id",1).single();if(error)throw error;
-      node.innerHTML='<div class="card"><h2>Website Maintenance</h2><p class="muted">Bei aktivierter Wartung sehen normale Besucher eine Wartungsseite. Admins können die Seite weiterhin verwalten.</p><div class="action-row maintenance-actions"><button type="button" class="btn" data-maintenance-toggle="on">Maintenance AN</button><button type="button" class="btn secondary" data-maintenance-toggle="off">Maintenance OFF</button></div><form id="maintenance-form" class="form"><label class="item-head"><span>Wartungsmodus</span><input type="checkbox" name="enabled" '+(data.enabled?"checked":"")+'></label><div class="field"><label>Nachricht</label><input class="input" name="message" value="'+esc(data.message)+'"></div><button class="btn">Einstellung speichern</button></form></div>';
+      node.innerHTML='<div class="card"><h2>Website Maintenance</h2><p class="muted">Bei aktivierter Wartung sehen normale Besucher eine Wartungsseite. Admins können die Seite weiterhin verwalten.</p><form id="maintenance-form" class="form"><label class="item-head"><span>Wartungsmodus</span><input type="checkbox" name="enabled" '+(data.enabled?"checked":"")+'></label><div class="field"><label>Nachricht</label><input class="input" name="message" value="'+esc(data.message)+'"></div><button class="btn">Einstellung speichern</button></form></div>';
+    } else if(section==="chat"){
+      const {data:s}=await db.from("chat_settings").select("mode,slow_seconds").eq("id",1).maybeSingle();
+      node.innerHTML='<div class="card"><h2>Chat-Steuerung</h2><p class="muted">Admins dürfen immer schreiben. Du kannst hier den Chat-Modus umschalten.</p><div class="chat-mode-grid"><button class="btn" data-chat-mode="normal">Normal</button><button class="btn" data-chat-mode="slow">Slow Mode</button><button class="btn" data-chat-mode="media">Nur Media</button><button class="btn danger" data-chat-mode="admin">Nur Admins</button></div><div class="form-note">Aktuell: <strong>'+esc(s?.mode||"normal")+'</strong></div></div>';
     } else if(section==="console"){
       node.innerHTML='<div class="card"><h2>Safe Admin Console</h2><p class="muted">Nur freigegebene Website-Befehle. Keine Shell, keine SQL-Konsole.</p><div class="console-command-grid"><button type="button" class="console-command" data-console-command="/maintenance on">Maintenance AN</button><button type="button" class="console-command" data-console-command="/maintenance off">Maintenance AUS</button><button type="button" class="console-command" data-console-command="/announce Server Update|KRAKE SMP Update ist live!">Announcement</button><button type="button" class="console-command" data-console-command="/ban Spieler Regelverstoß">Ban-Vorlage</button><button type="button" class="console-command" data-console-command="/unban Spieler">Unban-Vorlage</button><button type="button" class="console-command" data-console-command="/mute Spieler Chatregel">Mute-Vorlage</button><button type="button" class="console-command" data-console-command="/unmute Spieler">Unmute-Vorlage</button></div><form id="console-form" class="chat-compose"><input class="input" name="command" placeholder="/ban Spieler Regelverstoß" required><button class="btn">Ausführen</button></form><div class="form-note" style="margin-top:12px">Befehle sind klickbar und werden nur als freigegebene Admin-Aktionen ausgeführt.</div><div class="notice" id="console-output" style="margin-top:12px">Warte auf Befehl.</div></div>';
     }
@@ -899,6 +844,7 @@ function wireAdminSection(section) {
     if(ticket){openMarketTicket(Number(ticket.dataset.ticketOpen));return;}
 
     const button=event.target.closest("button");if(!button)return;
+    if(button.dataset.chatMode){try{const seconds=button.dataset.chatMode==="slow"?5:0;await callAdmin("chat_mode",{mode:button.dataset.chatMode,slow_seconds:seconds});toast("Chat-Modus geändert.","success");await loadAdminSection(section);}catch(error){toast(error.message,"error");}return;}
     try {
       if(button.dataset.playerAction){
         const id=button.dataset.user;
@@ -959,13 +905,12 @@ function wireAdminSection(section) {
   });
   node.querySelectorAll(".market-admin-form").forEach(form=>form.onsubmit=async e=>{
     e.preventDefault();const f=new FormData(form);try{const parsed=parsePrice(f.get("price"));if(!Number.isFinite(parsed)||parsed<0)throw new Error("Ungültiger Preis. Beispiele: 2b, 750m, 500k.");
-      await callAdmin("market_price",{item_id:form.dataset.item,price:parsed,reason:String(f.get("reason")||"")});await callAdmin("market_stock",{item_id:form.dataset.item,stock:Math.max(0,Number(f.get("stock")||0))});toast("Preis + Stock aktualisiert.","success");form.reset();}catch(error){toast(error.message,"error");}
+      await callAdmin("market_price",{item_id:form.dataset.item,price:parsed,reason:String(f.get("reason")||"")});toast("Preis aktualisiert.","success");form.reset();}catch(error){toast(error.message,"error");}
   });
   $("role-form")?.addEventListener("submit",async e=>{
     e.preventDefault();const f=new FormData(e.currentTarget);
     try{await callAdmin("set_role",{user_id:String(f.get("user_id")),role:String(f.get("role"))});toast("Rolle zugewiesen.","success");}catch(error){toast(error.message,"error");}
   });
-  node.querySelectorAll("[data-maintenance-toggle]").forEach(button=>button.addEventListener("click",async()=>{try{const enabled=button.dataset.maintenanceToggle==="on";await callAdmin("maintenance",{enabled,message:"KRAKE SMP wird gewartet."});toast(enabled?"Maintenance ist AN.":"Maintenance ist OFF.","success");await loadAdminSection("maintenance");}catch(error){toast(error.message,"error");}}));
   $("maintenance-form")?.addEventListener("submit",async e=>{
     e.preventDefault();const f=new FormData(e.currentTarget);
     try{await callAdmin("maintenance",{enabled:e.currentTarget.elements.enabled.checked,message:String(f.get("message")||"")});toast("Maintenance-Einstellung gespeichert.","success");}catch(error){toast(error.message,"error");}
