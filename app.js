@@ -8,6 +8,24 @@ const esc = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({
   "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
 }[c]));
 const number = (value) => Number(value ?? 0).toLocaleString("de-DE");
+const compactPrice = (value) => {
+  const n = Number(value ?? 0);
+  if (!Number.isFinite(n)) return "0";
+  const abs = Math.abs(n);
+  const fmt = (v) => Number.isInteger(v) ? String(v) : v.toFixed(1).replace(/\.0$/,"");
+  if (abs >= 1000000000) return fmt(n/1000000000) + "b";
+  if (abs >= 1000000) return fmt(n/1000000) + "m";
+  if (abs >= 1000) return fmt(n/1000) + "k";
+  return number(n);
+};
+const parsePrice = (value) => {
+  const raw = String(value ?? "").trim().toLowerCase().replace(/\s/g,"").replace(",",".");
+  const m = raw.match(/^([0-9]+(?:\.[0-9]+)?)([kmb])?$/);
+  if (!m) return NaN;
+  const mult = m[2]==="b" ? 1000000000 : m[2]==="m" ? 1000000 : m[2]==="k" ? 1000 : 1;
+  return Math.round(Number(m[1]) * mult);
+};
+const adminMark = () => isAdmin() ? '<span class="admin-badge" title="Administrator">ADMIN</span>' : "";
 const KRAKEN_CREST = `<svg class="kraken-crest" viewBox="0 0 120 120" role="img" aria-label="KRAKE SMP Kraken-Wappen">
   <path d="M30 31 21 10 42 20 60 5 78 20 99 10 90 32" fill="none" stroke="#ff6977" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M33 43 Q60 29 87 43 L84 62 Q81 82 60 88 Q39 82 36 62Z" fill="#e42336" fill-opacity=".16" stroke="#ff5365" stroke-width="3"/>
@@ -124,13 +142,13 @@ function shell(content) {
   ).join("");
   root.innerHTML = `
     <header class="topbar">
-      <button class="icon-btn menu-toggle" id="menu-open" aria-label="Menü öffnen">☰</button>
+      <button class="kraken-menu-btn" id="kraken-menu" aria-label="KRAKE Navigation öffnen" title="KRAKE Navigation">${KRAKEN_CREST}</button>
       <a class="brand" href="#home"><span class="brand-logo" aria-hidden="true">${KRAKEN_CREST}</span><span>KRAKE SMP</span></a>
       <label class="global-search"><span>⌕</span><input id="site-search" type="search" placeholder="Suche nach Spielern, Items …" aria-label="Website durchsuchen"></label>
       <div class="top-actions">
         <a class="wallet-chip" href="#market"><span>◉</span> Market</a>
-        ${isAdmin()?'<button class="crown-btn" id="admin-quick" aria-label="Admin Panel" title="Admin Panel">♛</button>':""}
-        <span class="account-chip">${esc(display)}${isAdmin()?' <span class="admin-crown">♛</span>':""}</span>
+        
+        <span class="account-chip">${esc(display)}${adminMark()}</span>
         <button class="icon-btn" id="account-open" aria-label="Profil öffnen">◎</button>
       </div>
     </header>
@@ -145,20 +163,20 @@ function shell(content) {
           ${nav.split('</button>').slice(5,8).map(x=>x+'</button>').join("")}
           <div class="nav-label">Account</div>
           ${nav.split('</button>').slice(8).map(x=>x+'</button>').join("")}
-          ${isAdmin()?'<div class="nav-label">Administration</div><button class="nav-link '+(currentRoute==="admin"?'active':'')+'" data-route="admin"><span class="nav-icon">✦</span>Admin Panel</button>':""}
+          ${isAdmin()?'<div class="nav-label">Administration</div><button class="nav-link '+(currentRoute==="admin"?'active':'')+'" data-route="admin"><span class="nav-icon">✦</span>Admin Panel</button><button class="nav-link '+(currentRoute==="market-tickets"?'active':'')+'" data-route="market-tickets"><span class="nav-icon">🎫</span>Market Tickets</button>':""}
           <button class="nav-link" id="auth-nav"><span class="nav-icon">${currentUser?"↪":"→"}</span>${currentUser?"Abmelden":"Anmelden"}</button>
         </nav>
       </aside>
     </div>
     <main class="page-wrap" id="page-content">${content}</main>
-    <footer class="site-footer">KRAKE SMP · COMMUNITY PORTAL · BUILT FOR THE COMMUNITY</footer>
+    <footer class="site-footer">KRAKE SMP · COMMUNITY PORTAL · <a href="#impressum">Impressum</a> · Made by Dev Mundi</footer>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
   `;
-  $("menu-open").onclick=()=>$( "drawer" )?.classList.toggle("open");
+  $("kraken-menu").onclick=()=>$( "drawer" )?.classList.toggle("open");
   $("menu-close").onclick=closeDrawer;
   $("drawer-back").onclick=closeDrawer;
   $("account-open").onclick=()=>go(currentUser?"profile":"login");
-  $("admin-quick")?.addEventListener("click",()=>go("admin"));
+  
   $("site-search")?.addEventListener("keydown",event=>{
     if(event.key!=="Enter")return;
     const q=event.currentTarget.value.toLowerCase();
@@ -289,40 +307,63 @@ async function renderChat() {
 }
 
 async function renderLeaderboards() {
-  const {data,error}=await db.from("player_statistics")
-    .select("user_id,games_played,wins,losses,best_time_ms,total_score,rating,profiles(username,display_name,verified)")
-    .order("rating",{ascending:false}).limit(100);
-  if(error) throw error;
-  const body=(data??[]).map((p,i)=>'<tr><td><span class="rank '+(i===0?"gold":i===1?"silver":i===2?"bronze":"")+'">'+(i+1)+'</span></td><td>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+badge(p.profiles?.verified)+'</td><td>'+number(p.rating)+'</td><td>'+number(p.wins)+'</td><td>'+number(p.games_played)+'</td><td>'+number(p.total_score)+'</td></tr>').join("");
-  return pageHead("COMPETITIVE","Leaderboards","Ratings und Statistiken der KRAKE Community.")+
-    (body?'<div class="table-wrap"><table><thead><tr><th>Rang</th><th>Spieler</th><th>Rating</th><th>Wins</th><th>Games</th><th>Score</th></tr></thead><tbody>'+body+'</tbody></table></div>':empty("Noch keine Spieler-Statistiken vorhanden."));
+  const {data:games,error:gamesError}=await db.from("minigames").select("id,slug,name,description").eq("active",true).order("name");
+  if(gamesError) throw gamesError;
+  const {data:results,error:resultsError}=await db.from("minigame_results")
+    .select("minigame_id,user_id,score,time_ms,won,created_at,minigames(slug,name),profiles(username,display_name,verified)")
+    .order("score",{ascending:false}).limit(1000);
+  if(resultsError) throw resultsError;
+  const groups=new Map((games??[]).map(g=>[g.id,[]]));
+  for(const r of (results??[])) if(groups.has(r.minigame_id)) groups.get(r.minigame_id).push(r);
+  const cards=(games??[]).map((g,index)=>{
+    const rows=groups.get(g.id)||[];
+    const sorted=[...rows].sort((a,b)=>{
+      if(g.slug==="reaction" && a.time_ms!=null && b.time_ms!=null) return a.time_ms-b.time_ms;
+      return Number(b.score||0)-Number(a.score||0);
+    }).slice(0,25);
+    const body=sorted.map((p,i)=>{
+      const player=esc(p.profiles?.display_name||p.profiles?.username||"Player");
+      const admin=isAdmin() && p.user_id===currentUser?.id ? adminMark() : "";
+      const metric=g.slug==="reaction" && p.time_ms!=null ? p.time_ms+" ms" : number(p.score||0);
+      return '<tr><td><span class="rank '+(i===0?"gold":i===1?"silver":i===2?"bronze":"")+'">'+(i+1)+'</span></td><td><strong>'+player+'</strong> '+badge(p.profiles?.verified)+' '+admin+'</td><td>'+metric+'</td><td>'+((p.won?"WIN":"—"))+'</td><td>'+dateTime(p.created_at)+'</td></tr>';
+    }).join("");
+    return '<section class="leaderboard-game card" data-board="'+esc(g.slug)+'" '+(index===0?"":"hidden")+'><div class="section-head"><div><div class="eyebrow">KRAKE COMPETITIVE</div><h2>'+esc(g.name)+' Leaderboard</h2><p>'+esc(g.description||"Spieler-Rankings")+'</p></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>Score</th><th>Status</th><th>Datum</th></tr></thead><tbody>'+(body||'<tr><td colspan="5">Noch keine Ergebnisse.</td></tr>')+'</tbody></table></div></section>';
+  }).join("");
+  const tabs=(games??[]).map((g,i)=>'<button class="leaderboard-tab '+(i===0?"active":"")+'" data-leaderboard-game="'+esc(g.slug)+'">'+esc(g.name)+'</button>').join("");
+  return pageHead("COMPETITIVE","Leaderboards","Für jedes Minigame gibt es ein eigenes KRAKE Leaderboard.")+
+    '<section class="card leaderboard-shell"><div class="leaderboard-tabs">'+tabs+'</div><div class="leaderboard-panels">'+cards+'</div></section>';
 }
-
 async function renderMarket() {
-  const [items,prices,balance] = await Promise.all([
-    db.from("market_items").select("id,symbol,name,description").eq("active",true).order("symbol"),
-    db.from("market_prices").select("item_id,price,created_at").order("created_at",{ascending:false}).limit(300),
-    currentUser?db.from("user_balances").select("balance").eq("user_id",currentUser.id).maybeSingle():Promise.resolve({data:null})
+  const [items,prices]=await Promise.all([
+    db.from("market_items").select("id,symbol,name,description").eq("active",true).order("name"),
+    db.from("market_prices").select("item_id,price,created_at").order("created_at",{ascending:true}).limit(1000)
   ]);
-  if(items.error)throw items.error;if(prices.error)throw prices.error;if(balance.error)throw balance.error;
-  const latest=new Map();for(const p of (prices.data??[])){if(!latest.has(p.item_id))latest.set(p.item_id,p)}
-  const cards=(items.data??[]).map(item=>{const price=latest.get(item.id);return '<article class="card"><div class="market-symbol">'+esc(item.symbol)+'</div><h2>'+esc(item.name)+'</h2><p>'+esc(item.description||"Fiktives virtuelles Asset.")+'</p><div class="market-price">'+number(price?.price??0)+' ◆</div><div class="trend">Letztes Update: '+dateTime(price?.created_at)+'</div></article>'}).join("");
-  return pageHead("VIRTUAL ECONOMY","Market","Fiktive Ingame-Website-Werte. Kein Echtgeld, keine Ein- oder Auszahlungen, kein Geldwert.")+
-    '<div class="section grid two"><div class="card"><div class="stat-label">Dein Guthaben</div><div class="stat-number">'+number(balance.data?.balance??0)+' ◆</div><p class="form-note">Virtuelle Community-Währung</p></div><div class="notice">Der Markt ist ein reines Spielsystem. Echtgeldhandel, Auszahlungen und Umtausch in Minecraft-Währung sind nicht vorgesehen.</div></div>'+
-    '<div class="section grid">'+(cards||empty("Noch keine Markt-Assets vorhanden."))+'</div>';
+  if(items.error)throw items.error;if(prices.error)throw prices.error;
+  const histories=new Map();
+  for(const p of (prices.data??[])){if(!histories.has(p.item_id))histories.set(p.item_id,[]);histories.get(p.item_id).push(p);}
+  const art=(symbol)=>symbol==="SKELETON"?"☠️":symbol==="ELYTRA_ENCH"?"🪽":symbol==="ELYTRA"?"🪽":"🍎";
+  const cards=(items.data??[]).map(item=>{
+    const history=histories.get(item.id)||[];
+    const latest=history.at(-1);
+    const first=history[0]?.price ?? latest?.price ?? 0;
+    const change=first ? ((Number(latest?.price||0)-Number(first))/Number(first))*100 : 0;
+    const pts=history.slice(-12).map((p,i)=>(i*12)+","+(50-Math.max(-42,Math.min(42,((Number(p.price)-Number(first))/(Number(first)||1))*42)))).join(" ");
+    const chart=pts ? '<svg class="price-chart" viewBox="0 0 132 60" preserveAspectRatio="none"><polyline points="'+pts+'" fill="none" stroke="currentColor" stroke-width="3" vector-effect="non-scaling-stroke"/></svg>' : "";
+    return '<article class="market-card card"><div class="market-art market-art-'+esc(item.symbol)+'"><span>'+art(item.symbol)+'</span></div><div class="market-card-body"><div class="eyebrow">INGAME MARKET</div><h2>'+esc(item.name)+'</h2><p>'+esc(item.description||"Minecraft Item")+'</p><div class="market-price-row"><strong>'+compactPrice(latest?.price||0)+'</strong><span class="price-change '+(change>=0?"up":"down")+'">'+(change>=0?"+":"")+change.toFixed(1)+'% seit Start</span></div><div class="market-trend">'+chart+'<div><small>Start</small><b>'+compactPrice(first)+'</b></div><div><small>Aktuell</small><b>'+compactPrice(latest?.price||0)+'</b></div></div><button class="btn market-ticket-btn" data-market-ticket="'+item.id+'">Dieses Item anfragen</button></div></article>';
+  }).join("");
+  return pageHead("INGAME MARKET","KRAKE Market","Hier werden echte Ingame-Items gehandelt. Preise setzt du selbst im Admin Panel. Kein Website-Guthaben.")+
+    '<div class="market-note"><span>◆</span><div><strong>Preisübersicht</strong><p>Preise werden als Ingame-Werte wie <b>2b</b>, <b>750m</b> oder <b>500k</b> angezeigt. Klick auf ein Item, wenn du es kaufen möchtest – daraus wird direkt ein Ticket für das Team.</p></div></div>'+
+    '<section class="market-grid">'+(cards||empty("Noch keine Markt-Items vorhanden."))+'</section>';
 }
-
 async function renderMinigames() {
   const {data:games,error}=await db.from("minigames").select("id,slug,name,description").eq("active",true).order("name");
   if(error)throw error;
-  const reaction=(games??[]).find(g=>g.slug==="reaction");
-  const tiles=(games??[]).filter(g=>g.slug!=="reaction").map(g=>'<article class="card"><span class="pill">CHALLENGE</span><h2>'+esc(g.name)+'</h2><p>'+esc(g.description||"Challenge")+'</p><span class="form-note">Dieses Minigame folgt in einem späteren Update.</span></article>').join("");
-  return pageHead("QUICK COMPETITION","Minigames","Kurze Skill-Challenges mit Stats, Wins und Leaderboard.")+
-    '<section class="card"><div class="section-head"><div><div class="eyebrow">LIVE CHALLENGE</div><h2>Reaction Test</h2><p>Warte bis die Fläche grün wird und klicke dann so schnell wie möglich.</p></div><span class="pill green">SPIELBAR</span></div>'+
-    '<div class="reaction-box"><div><div id="reaction-result" class="muted">Bereit für deinen Reaktionstest?</div><button id="reaction-button" class="btn reaction-button">Challenge starten</button><div class="form-note" style="margin-top:12px">Dein Ergebnis wird mit deinem Account gespeichert.</div></div></div></section>'+
-    '<section class="section grid">'+(tiles||empty("Weitere Minigames sind für Update 1.3 vorbereitet."))+'</section>';
+  const icons={reaction:"⚡",speed:"⏱️",duel:"⚔️",memory:"🧠",aim:"🎯",quiz:"❓",decision:"⚖️"};
+  const cards=(games??[]).map(g=>'<article class="game-card card"><div class="game-icon">'+(icons[g.slug]||"🎮")+'</div><div><span class="pill green">FREIGESCHALTET</span><h2>'+esc(g.name)+'</h2><p>'+esc(g.description||"Challenge")+'</p></div><button class="btn small" data-game-start="'+esc(g.slug)+'">Spielen</button></article>').join("");
+  return pageHead("QUICK COMPETITION","Minigames","Alle KRAKE Minigames sind spielbar – jedes Ergebnis landet im eigenen Leaderboard.")+
+    '<section class="games-grid">'+cards+'</section>'+
+    '<section class="card game-stage" id="game-stage" hidden><div class="section-head"><div><div class="eyebrow">LIVE GAME</div><h2 id="game-title">Minigame</h2><p id="game-description"></p></div><button class="btn ghost" id="game-close">Schließen</button></div><div id="game-area"></div></section>';
 }
-
 async function renderEvents() {
   const {data,error}=await db.from("events").select("name,description,banner_url,starts_at,ends_at,active,config").order("starts_at",{ascending:false});
   if(error)throw error;
@@ -385,12 +426,22 @@ async function renderSettings() {
     '<div class="grid two"><section class="card"><h2>Profil bearbeiten</h2><form class="form" id="profile-form"><div class="field"><label>Anzeigename</label><input class="input" name="display_name" maxlength="32" value="'+esc(profile?.display_name||profile?.username||"")+'"></div><button class="btn">Speichern</button></form></section><section class="card"><h2>Minecraft Account</h2><p class="muted">Die Eingabe eines Namens ist keine automatische Verifizierung. Das Team prüft jeden Antrag manuell.</p><div class="notice">Aktueller Status: <strong>'+esc(mc?.verification_status||req?.status||"Nicht verifiziert")+'</strong>'+(mc?.minecraft_name?' · '+esc(mc.minecraft_name):req?.minecraft_name?' · '+esc(req.minecraft_name):"")+'</div><form class="form" id="verification-form" style="margin-top:12px"><div class="field"><label>Minecraft Java Name</label><input class="input" name="minecraft_name" pattern="[A-Za-z0-9_]{3,16}" maxlength="16" required placeholder="DeinMinecraftName"></div><button class="btn">Verifizierung anfordern</button></form></section><section class="card"><h2>Sicherheit</h2><p class="muted">Passwörter werden ausschließlich von Supabase Auth gehasht gespeichert. Admins können ein Passwort zurücksetzen, aber niemals dein Klartext-Passwort auslesen.</p><div class="pill green">Sichere Sessions aktiv</div><div class="pill">Kein 2FA-Zwang</div></section><section class="card"><h2>Account</h2><p class="muted">Username: <strong>'+esc(profile?.username||"")+'</strong><br>Erstellt: '+dateTime(profile?.created_at)+'</p><button class="btn ghost" id="settings-logout">Abmelden</button></section></div>';
 }
 
+async function renderMarketTickets() {
+  if(!currentUser)return pageHead("MARKET","Market Tickets","Melde dich an, um deine Tickets zu sehen.")+'<div class="card">'+empty("Bitte anmelden.")+'</div>';
+  const {data,error}=await db.from("market_tickets").select("id,quantity,message,status,created_at,updated_at,market_items(name,symbol)").eq("user_id",currentUser.id).order("created_at",{ascending:false});
+  if(error)throw error;
+  const cards=(data??[]).map(t=>'<article class="list-item"><div class="item-head"><strong>'+esc(t.market_items?.name||"Item")+'</strong><span class="pill '+(t.status==="open"?"red":"")+'">'+esc(t.status)+'</span></div><p>Menge: '+number(t.quantity)+' · '+esc(t.message||"Keine Nachricht")+'</p><div class="inline-meta">Ticket #'+t.id+' · '+dateTime(t.created_at)+'</div></article>').join("");
+  return pageHead("MARKET","Deine Market Tickets","Wenn du ein Item anklickst, landet deine Anfrage hier beim Team.")+'<div class="list">'+(cards||empty("Noch keine Market-Tickets."))+'</div>';
+}
+async function renderImpressum() {
+  return pageHead("LEGAL","Impressum","Informationen zum Projekt.")+'<section class="card"><h2>KRAKE SMP</h2><p class="muted">Made by Dev Mundi.</p></section>';
+}
 async function renderAdmin() {
   if(!currentUser)return pageHead("RESTRICTED","Admin Panel","Nur für autorisierte Teammitglieder.")+'<div class="card">'+empty("Bitte anmelden.")+'<button class="btn" data-route="login">Anmelden</button></div>';
   if(!isAdmin())return pageHead("RESTRICTED","Kein Zugriff","Dein Account besitzt keine Admin-Berechtigung.")+'<div class="card">'+empty("Das Admin Panel ist serverseitig geschützt.")+'</div>';
   return pageHead("CONTROL CENTER","Admin Panel","Serverseitig abgesicherte Verwaltung und Audit-Protokoll.")+
     '<section class="card"><div class="admin-tabs">'+[
-      ["overview","Dashboard"],["players","Players"],["bans","Bans"],["verifications","Minecraft"],["applications","Bewerbungen"],["building","Building"],["market","Market"],["chat","Chat Reports"],["roles","Rollen"],["audit","Audit Logs"],["maintenance","Maintenance"],["console","Admin Console"]
+      ["overview","Dashboard"],["players","Players"],["bans","Bans"],["verifications","Minecraft"],["applications","Bewerbungen"],["building","Building"],["market","Market"],["market_tickets","Market Tickets"],["chat","Chat Reports"],["roles","Rollen"],["audit","Audit Logs"],["maintenance","Maintenance"],["console","Admin Console"]
     ].map(([k,v])=>'<button data-admin-tab="'+k+'" class="'+(adminSection===k?"active":"")+'">'+v+'</button>').join("")+'</div><div id="admin-content" class="admin-layout">'+empty("Bereich wird geladen …")+'</div></section>';
 }
 
@@ -412,6 +463,8 @@ async function renderPage() {
     else if(route==="profile")content=await renderProfile();
     else if(route==="settings")content=await renderSettings();
     else if(route==="admin")content=await renderAdmin();
+    else if(route==="market-tickets")content=await renderMarketTickets();
+    else if(route==="impressum")content=await renderImpressum();
     else {currentRoute="home";content=await renderHome();}
   } catch(error) {
     console.error(error);
@@ -422,6 +475,18 @@ async function renderPage() {
   if(route==="admin" && isAdmin()) await loadAdminSection(adminSection);
 }
 
+function wireMarket() {
+  document.querySelectorAll("[data-market-ticket]").forEach(button=>button.addEventListener("click",async()=>{
+    if(!currentUser){go("login");return;}
+    const itemId=button.dataset.marketTicket;
+    const rawQuantity=prompt("Wie viele möchtest du?","1"); if(rawQuantity===null)return;
+    const q=Math.floor(Number(rawQuantity));
+    if(!Number.isFinite(q)||q<1){toast("Ungültige Menge.","error");return;}
+    const message=prompt("Nachricht an das Team (optional):","Ich möchte dieses Item kaufen."); if(message===null)return;
+    const {error}=await db.from("market_tickets").insert({user_id:currentUser.id,item_id:itemId,quantity:q,message:String(message).slice(0,2000)});
+    if(error)toast(error.message,"error");else{toast("Ticket erstellt. Das Team sieht deine Anfrage im Admin Panel.","success");await renderPage();}
+  }));
+}
 function wirePage(route) {
   if(route==="login")wireLogin();
   if(route==="chat")wireChat();
@@ -431,6 +496,7 @@ function wirePage(route) {
   if(route==="profile")$("logout-btn")?.addEventListener("click",logout);
   if(route==="settings")wireSettings();
   if(route==="admin")wireAdmin();
+  if(route==="market")wireMarket();
 }
 async function logout(){await db.auth.signOut();await refreshAuth();go("home");await renderPage();toast("Du wurdest abgemeldet.");}
 
@@ -500,23 +566,44 @@ function wireChat() {
   activeChatChannel=db.channel("krake-global-chat").on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages"},()=>loadChatMessages().catch(console.error)).subscribe();
 }
 function wireReaction() {
-  const button=$("reaction-button");if(!button)return;
-  button.addEventListener("click",async()=>{
+  const stage=$("game-stage"), area=$("game-area");
+  if(!stage||!area)return;
+  const names={reaction:"Reaction",speed:"Speed Challenge",duel:"Duel",memory:"Memory",aim:"Aim",quiz:"Quiz Duel",decision:"Quick Decision"};
+  const save=async(slug,score,timeMs,won,metadata={})=>{
+    const {data:game}=await db.from("minigames").select("id").eq("slug",slug).single();
+    if(!game)return;
+    const {error}=await db.from("minigame_results").insert({minigame_id:game.id,user_id:currentUser.id,score:Math.max(0,Math.round(score||0)),time_ms:timeMs??null,won:Boolean(won),metadata});
+    if(error)toast("Ergebnis konnte nicht gespeichert werden: "+error.message,"error");else toast("Ergebnis gespeichert!","success");
+  };
+  const open=(slug)=>{
     if(!currentUser){go("login");return;}
-    const result=$("reaction-result");
-    if(reactionState==="idle"){
-      reactionState="waiting";button.className="btn reaction-button waiting";button.textContent="Warte …";result.textContent="Nicht zu früh klicken!";
-      reactionTimeout=setTimeout(()=>{reactionState="ready";reactionStartedAt=performance.now();button.className="btn reaction-button ready";button.textContent="JETZT KLICKEN";result.textContent="LOS!";},1500+Math.random()*2500);
-    }else if(reactionState==="waiting"){
-      clearTimeout(reactionTimeout);reactionTimeout=null;reactionState="idle";button.className="btn reaction-button early";button.textContent="Zu früh!";
-      result.textContent="Fehlstart! Versuche es erneut.";
-    }else if(reactionState==="ready"){
-      const ms=Math.round(performance.now()-reactionStartedAt);reactionState="idle";button.className="btn reaction-button";button.textContent="Nochmal spielen";
-      result.textContent="Deine Zeit: "+ms+" ms";
-      const {data:game}=await db.from("minigames").select("id").eq("slug","reaction").single();
-      if(game){const {error}=await db.from("minigame_results").insert({minigame_id:game.id,user_id:currentUser.id,time_ms:ms,score:Math.max(0,1000-ms),won:true,metadata:{client:"web-v1"}});if(error)toast("Ergebnis konnte nicht gespeichert werden: "+error.message);else toast("Ergebnis gespeichert!","success");}
+    stage.hidden=false;$("game-title").textContent=names[slug]||slug;$("game-description").textContent="Spiele jetzt und setze deine Bestmarke.";
+    area.innerHTML="";
+    if(slug==="reaction"){
+      area.innerHTML='<div class="game-center"><div id="reaction-result" class="muted">Bereit?</div><button id="reaction-button" class="btn reaction-button">Challenge starten</button></div>';
+      let state="idle",timer=null,start=0;
+      $("reaction-button").onclick=async()=>{const b=$("reaction-button"),r=$("reaction-result");if(state==="idle"){state="waiting";b.textContent="Warte …";r.textContent="Nicht zu früh klicken!";timer=setTimeout(()=>{state="ready";start=performance.now();b.textContent="JETZT KLICKEN";b.className="btn reaction-button ready";r.textContent="LOS!";},1500+Math.random()*2200);}else if(state==="waiting"){clearTimeout(timer);state="idle";b.textContent="Nochmal";r.textContent="Fehlstart!";b.className="btn reaction-button early";}else{const ms=Math.round(performance.now()-start);state="idle";r.textContent=ms+" ms";b.textContent="Nochmal spielen";b.className="btn reaction-button";await save(slug,Math.max(0,1200-ms),ms,true,{type:"reaction"});}};
+    } else if(slug==="speed"){
+      area.innerHTML='<div class="game-center"><div id="speed-info" class="muted">Klicke 12-mal so schnell wie möglich.</div><button id="speed-btn" class="btn">Start</button></div>';let n=0,start=0;
+      $("speed-btn").onclick=async()=>{if(n===0){n=1;start=performance.now();$("speed-btn").textContent="KLICK 1/12";return;}n++;if(n<=12)$("speed-btn").textContent="KLICK "+n+"/12";if(n>12){const ms=Math.round(performance.now()-start);$("speed-info").textContent="Zeit: "+ms+" ms";$("speed-btn").textContent="Nochmal";n=0;await save(slug,Math.max(0,15000-ms),ms,true,{clicks:12});}};
+    } else if(slug==="memory"){
+      const symbols=["☠","🪽","🍎","⚔","⛏","💎"],deck=[...symbols,...symbols].sort(()=>Math.random()-.5);area.innerHTML='<div class="memory-grid">'+deck.map((s,i)=>'<button class="memory-card" data-memory="'+i+'" data-value="'+s+'">?</button>').join("")+'</div><p id="memory-info" class="muted">Finde alle Paare.</p>';
+      let first=null,lock=false,found=0,moves=0;document.querySelectorAll("[data-memory]").forEach(btn=>btn.onclick=async()=>{if(lock||btn.classList.contains("found"))return;btn.textContent=btn.dataset.value;if(first===null){first=btn;return;}moves++;if(first.dataset.value===btn.dataset.value){first.classList.add("found");btn.classList.add("found");found++;first=null;if(found===symbols.length){const score=Math.max(0,1200-moves*70);$("memory-info").textContent="Fertig! "+moves+" Züge.";await save(slug,score,null,true,{moves});}}else{lock=true;setTimeout(()=>{first.textContent="?";btn.textContent="?";first=null;lock=false;},500);}});
+    } else if(slug==="aim"){
+      area.innerHTML='<div class="aim-zone" id="aim-zone"><button id="aim-target">+</button></div><p id="aim-info" class="muted">Treffe 10 Ziele.</p>';let hits=0,start=performance.now(),target=$("aim-target");
+      const place=()=>{target.style.left=(8+Math.random()*84)+"%";target.style.top=(8+Math.random()*78)+"%";};place();target.onclick=async()=>{hits++;if(hits>=10){const ms=Math.round(performance.now()-start);$("aim-info").textContent="Fertig! "+ms+" ms";await save(slug,Math.max(0,3000-ms),ms,true,{hits});}else{$("aim-info").textContent=hits+"/10";place();}};
+    } else if(slug==="duel"){
+      area.innerHTML='<div class="duel-grid"><button class="btn" data-duel="attack">⚔️ Angriff</button><button class="btn secondary" data-duel="defend">🛡️ Verteidigen</button><div id="duel-info" class="muted">Best of 5 gegen den KRAKE Bot.</div></div>';let p=0,b=0,round=0;
+      document.querySelectorAll("[data-duel]").forEach(btn=>btn.onclick=async()=>{round++;const bot=["attack","defend"][Math.floor(Math.random()*2)],mine=btn.dataset.duel;if(mine!==bot)p++;else b++;$("duel-info").textContent="Runde "+round+" · Du "+p+" : "+b+" Bot";if(round>=5){const won=p>b;await save(slug,won?1000:300,p*1000,won,{player:p,bot:b});$("duel-info").textContent=won?"Du hast gewonnen!":"Der Bot gewinnt.";round=0;p=0;b=0;}});
+    } else if(slug==="quiz"){
+      const qs=[["Wie viele Herzen hat ein Minecraft-Spieler?",["10","20","30"],1],["Welches Item macht einen Beacon?",["Netherstern","Diamant","Enderperle"],0],["Welche Dimension hat den Enderdrachen?",["Nether","End","Overworld"],1],["Was braucht man für einen Crafting Table?",["4 Holzplanken","8 Eisen","1 Stein"],0],["Welches Mob explodiert?",["Creeper","Skeleton","Villager"],0]];let i=0,score=0;
+      const draw=()=>{const q=qs[i];area.innerHTML='<div class="quiz-box"><h3>'+esc(q[0])+'</h3><div class="quiz-options">'+q[1].map((a,j)=>'<button class="btn secondary" data-quiz="'+j+'">'+esc(a)+'</button>').join("")+'</div><p class="muted">'+(i+1)+"/"+qs.length+'</p></div>';document.querySelectorAll("[data-quiz]").forEach(btn=>btn.onclick=async()=>{if(Number(btn.dataset.quiz)===q[2])score+=200;i++;if(i<qs.length)draw();else{area.innerHTML='<div class="game-center"><h2>Quiz beendet</h2><p>Score: '+score+'</p></div>';await save(slug,score,null,score>=600,{correct:score/200});}})};draw();
+    } else if(slug==="decision"){
+      let round=0,score=0;const draw=()=>{area.innerHTML='<div class="game-center"><h2>Quick Decision</h2><p>Wähle schnell.</p><div class="action-row"><button class="btn" data-decision="left">LINKS</button><button class="btn secondary" data-decision="right">RECHTS</button></div><p class="muted">Runde '+(round+1)+"/8</p></div>';document.querySelectorAll("[data-decision]").forEach(btn=>btn.onclick=async()=>{if(Math.random()>.5)score+=150;round++;if(round<8)draw();else{area.innerHTML='<div class="game-center"><h2>Fertig</h2><p>Score: '+score+'</p></div>';await save(slug,score,null,score>=600,{rounds:8});}})};draw();
     }
-  });
+  };
+  document.querySelectorAll("[data-game-start]").forEach(b=>b.onclick=()=>open(b.dataset.gameStart));
+  $("game-close").onclick=()=>{stage.hidden=true;area.innerHTML="";};
 }
 function wireBuilding() {
   $("building-form")?.addEventListener("submit",async e=>{
@@ -609,7 +696,12 @@ async function loadAdminSection(section) {
       }).join("")||empty("Keine Building-Aufträge."))+'</div></div>';
     } else if(section==="market"){
       const {data,error}=await db.from("market_items").select("id,symbol,name,active").order("symbol");if(error)throw error;
-      node.innerHTML='<div class="card"><h2>Virtuelle Market-Preise</h2><div class="list">'+((data??[]).map(item=>'<form class="list-item market-admin-form" data-item="'+item.id+'"><div class="item-head"><strong>'+esc(item.name)+' · '+esc(item.symbol)+'</strong><span class="pill">'+(item.active?"aktiv":"inaktiv")+'</span></div><div class="form-grid"><div class="field"><label>Neuer Preis in ◆</label><input class="input" name="price" type="number" min="0" step="1" required></div><div class="field"><label>Änderungsgrund</label><input class="input" name="reason" maxlength="200" placeholder="Marktanpassung"></div></div><button class="btn small">Preis speichern</button></form>').join("")||empty("Keine Assets angelegt."))+'</div></div>';
+      node.innerHTML='<div class="card"><h2>Virtuelle Market-Preise</h2><div class="list">'+((data??[]).map(item=>'<form class="list-item market-admin-form" data-item="'+item.id+'"><div class="item-head"><strong>'+esc(item.name)+' · '+esc(item.symbol)+'</strong><span class="pill">'+(item.active?"aktiv":"inaktiv")+'</span></div><div class="form-grid"><div class="field"><label>Neuer Preis (z.B. 2b, 750m, 500k)</label><input class="input" name="price" inputmode="decimal" placeholder="2b" required></div><div class="field"><label>Änderungsgrund</label><input class="input" name="reason" maxlength="200" placeholder="Marktanpassung"></div></div><button class="btn small">Preis speichern</button></form>').join("")||empty("Keine Assets angelegt."))+'</div></div>';
+    } else if(section==="market_tickets"){
+      const {data,error}=await db.from("market_tickets").select("id,user_id,quantity,message,status,created_at,market_items(name,symbol),profiles(username,display_name)").order("created_at",{ascending:false}).limit(100);
+      if(error)throw error;
+      const rows=(data??[]).map(t=>'<article class="list-item"><div class="item-head"><strong>#'+t.id+' · '+esc(t.market_items?.name||"Item")+'</strong><span class="pill '+(t.status==="open"?"red":"")+'">'+esc(t.status)+'</span></div><p><strong>'+esc(t.profiles?.display_name||t.profiles?.username||"Player")+'</strong> · Menge '+number(t.quantity)+'</p><p>'+esc(t.message||"Keine Nachricht")+'</p><div class="inline-meta">'+dateTime(t.created_at)+'</div><div class="action-group"><button class="btn small secondary" data-ticket-status="in_progress" data-id="'+t.id+'">In Bearbeitung</button><button class="btn small" data-ticket-status="closed" data-id="'+t.id+'">Schließen</button></div></article>').join("");
+      node.innerHTML='<div class="card"><h2>Market Tickets</h2><p class="muted">Anfragen von Spielern, die ein Ingame-Item aus dem Market kaufen möchten.</p><div class="list">'+(rows||empty("Keine Market-Tickets."))+'</div></div>';
     } else if(section==="chat"){
       const [reportResult,messageResult]=await Promise.all([
         db.from("chat_reports").select("id,message_id,reporter_user_id,reason,status,created_at").order("created_at",{ascending:false}).limit(50),
@@ -676,6 +768,11 @@ function wireAdminSection(section) {
         await callAdmin("report_status",{report_id:Number(button.dataset.id),status:button.dataset.reportStatus});
         toast("Report aktualisiert.","success");await loadAdminSection(section);
       }
+      if(button.dataset.ticketStatus){
+        const {error}=await db.from("market_tickets").update({status:button.dataset.ticketStatus,handled_by:currentUser.id,updated_at:new Date().toISOString()}).eq("id",Number(button.dataset.id));
+        if(error)throw error;
+        toast("Market-Ticket aktualisiert.","success");await loadAdminSection(section);
+      }
       if(button.dataset.deleteMessage){
         if(!confirm("Chat-Nachricht wirklich ausblenden?"))return;
         await callAdmin("delete_chat_message",{message_id:Number(button.dataset.deleteMessage)});
@@ -694,7 +791,8 @@ function wireAdminSection(section) {
     if(error)toast(error.message,"error");else{form.reset();toast("Private Building-Nachricht gesendet.","success");await loadAdminSection(section);}
   });
   node.querySelectorAll(".market-admin-form").forEach(form=>form.onsubmit=async e=>{
-    e.preventDefault();const f=new FormData(form);try{await callAdmin("market_price",{item_id:form.dataset.item,price:Number(f.get("price")),reason:String(f.get("reason")||"")});toast("Preis aktualisiert.","success");form.reset();}catch(error){toast(error.message,"error");}
+    e.preventDefault();const f=new FormData(form);try{const parsed=parsePrice(f.get("price"));if(!Number.isFinite(parsed)||parsed<0)throw new Error("Ungültiger Preis. Beispiele: 2b, 750m, 500k.");
+      await callAdmin("market_price",{item_id:form.dataset.item,price:parsed,reason:String(f.get("reason")||"")});toast("Preis aktualisiert.","success");form.reset();}catch(error){toast(error.message,"error");}
   });
   $("role-form")?.addEventListener("submit",async e=>{
     e.preventDefault();const f=new FormData(e.currentTarget);
