@@ -288,8 +288,8 @@ async function renderLogin() {
       <div class="auth-switch"><button class="btn" id="tab-login">Anmelden</button><button class="btn secondary" id="tab-signup">Account erstellen</button></div>
       <form class="form" id="auth-form">
         <div class="field"><label for="auth-username">Benutzername</label><input class="input" id="auth-username" name="username" minlength="3" maxlength="20" pattern="[A-Za-z0-9_]{3,20}" title="Bei der Registrierung nur Buchstaben und Zahlen (3–20 Zeichen)." autocomplete="username" required></div>
-        <div class="field"><label for="auth-password">Passwort</label><input class="input" id="auth-password" name="password" type="password" minlength="12" autocomplete="current-password" required></div>
-        <div id="signup-confirm" class="field hidden"><label for="auth-confirm">Passwort wiederholen</label><input class="input" id="auth-confirm" type="password" minlength="12" autocomplete="new-password"></div>
+        <div class="field"><label for="auth-password">Passwort</label><div class="password-input-wrap"><input class="input" id="auth-password" name="password" type="password" minlength="12" autocomplete="current-password" required><button class="password-toggle" type="button" data-password-toggle="auth-password" aria-label="Passwort anzeigen" aria-pressed="false" title="Passwort anzeigen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg></button></div></div>
+        <div id="signup-confirm" class="field hidden"><label for="auth-confirm">Passwort wiederholen</label><div class="password-input-wrap"><input class="input" id="auth-confirm" type="password" minlength="12" autocomplete="new-password"><button class="password-toggle" type="button" data-password-toggle="auth-confirm" aria-label="Passwort anzeigen" aria-pressed="false" title="Passwort anzeigen"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg></button></div></div>
         <button class="btn" id="auth-submit">Einloggen</button>
       </form>
       <div class="form-note" id="auth-message" aria-live="polite">Melde dich mit deinem Benutzernamen und Passwort an.</div>
@@ -669,12 +669,31 @@ async function logout(){await db.auth.signOut();await refreshAuth();go("home");a
 
 function wireLogin() {
   let mode="login";
+  const eyeIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7Z"></path><circle cx="12" cy="12" r="3"></circle></svg>';
+  const eyeOffIcon='<svg viewBox="0 0 24 24" aria-hidden="true"><path d="m3 3 18 18"></path><path d="M10.6 5.1A11.8 11.8 0 0 1 12 5c6.5 0 10 7 10 7a15.7 15.7 0 0 1-3.1 3.8"></path><path d="M6.2 6.2C3.5 8 2 12 2 12s3.5 7 10 7a10.8 10.8 0 0 0 4-.8"></path><path d="M9.9 9.9a3 3 0 0 0 4.2 4.2"></path></svg>';
+  const setPasswordVisibility=(id,visible)=>{
+    const input=$(id),toggle=document.querySelector('[data-password-toggle="'+id+'"]');
+    if(!input||!toggle)return;
+    input.type=visible?"text":"password";
+    toggle.innerHTML=visible?eyeOffIcon:eyeIcon;
+    toggle.setAttribute("aria-pressed",String(visible));
+    toggle.setAttribute("aria-label",visible?"Passwort verbergen":"Passwort anzeigen");
+    toggle.title=visible?"Passwort verbergen":"Passwort anzeigen";
+  };
+  document.querySelectorAll("[data-password-toggle]").forEach(toggle=>{
+    toggle.addEventListener("click",()=>{
+      const id=toggle.dataset.passwordToggle;
+      setPasswordVisibility(id,$(id)?.type==="password");
+    });
+  });
   const setMode=(next)=>{
     mode=next;
     $("auth-title").textContent=mode==="login"?"Anmelden":"Account erstellen";
     $("auth-submit").textContent=mode==="login"?"Einloggen":"Account erstellen";
     $("signup-confirm").classList.toggle("hidden",mode==="login");
     $("auth-password").autocomplete=mode==="login"?"current-password":"new-password";
+    setPasswordVisibility("auth-password",false);
+    setPasswordVisibility("auth-confirm",false);
     $("auth-username").pattern=mode==="signup"?"[A-Za-z0-9]{3,20}":"[A-Za-z0-9_]{3,20}";
     $("auth-username").title=mode==="signup"?"Nur Buchstaben und Zahlen, 3–20 Zeichen.":"Benutzername eingeben."; 
     $("tab-login").className=mode==="login"?"btn":"btn secondary";
