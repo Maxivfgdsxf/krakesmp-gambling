@@ -9,7 +9,10 @@ const corsHeaders = {
 
 const json = (body: unknown, status = 200) =>
   new Response(JSON.stringify(body), {
-    status,
+    // This browser app reads { error } from the JSON payload. Returning
+    // controlled auth/validation failures as 200 prevents supabase-js from
+    // replacing the useful message with its generic non-2xx invoke error.
+    status: status >= 400 && body && typeof body === "object" && "error" in body ? 200 : status,
     headers: { ...corsHeaders, "Content-Type": "application/json" },
   });
 
