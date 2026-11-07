@@ -623,3 +623,12 @@ body{background:radial-gradient(circle at 50% -12%,#3a0915 0,#14070c 30%,#080609
 .page-head p,.section-head p{color:#b88992!important}
 .eyebrow{color:#ff5365!important}
 .muted{color:#b88992!important}
+
+/* HEADER FIX: KRAKE GUI ALWAYS TOP-RIGHT */
+.topbar{display:flex!important;align-items:center!important;justify-content:flex-start!important;gap:16px!important}
+.topbar .brand{order:1!important;min-width:0}
+.topbar .kraken-menu-btn{order:2!important;margin-left:auto!important;margin-right:0!important;display:grid!important;place-items:center!important;position:relative!important;z-index:60!important;pointer-events:auto!important}
+.drawer{z-index:100!important}
+.drawer.open{pointer-events:auto!important}
+.drawer-panel{z-index:101!important}
+.drawer-backdrop{z-index:100!important}
