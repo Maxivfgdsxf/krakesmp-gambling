@@ -75,8 +75,22 @@ async function callAdmin(command,args={}) {
   return data;
 }
 async function authFunction(payload) {
-  const { data,error } = await db.functions.invoke(CFG.authFunction,{body:payload});
-  if (error) throw error;
+  const { data, error } = await db.functions.invoke(CFG.authFunction,{body:payload});
+  if (error) {
+    // Supabase's invoke() often hides the JSON error body behind the generic
+    // "Edge Function returned a non-2xx status code" message. Read the
+    // response body so users get the real authentication error.
+    try {
+      const response = error.context;
+      if (response && typeof response.clone === "function") {
+        const body = await response.clone().json();
+        if (body?.error) throw new Error(String(body.error));
+      }
+    } catch (bodyError) {
+      if (bodyError instanceof Error && bodyError.message !== error.message) throw bodyError;
+    }
+    throw error;
+  }
   if (data?.error) throw new Error(data.error);
   return data;
 }
