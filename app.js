@@ -147,7 +147,6 @@ function shell(content) {
     <header class="topbar">
       <button class="kraken-menu-btn" id="kraken-menu" aria-label="KRAKE Navigation öffnen" title="KRAKE Navigation">${KRAKEN_CREST}</button>
       <a class="brand" href="#home"><span class="brand-logo" aria-hidden="true">${KRAKEN_CREST}</span><span>KRAKE SMP</span></a>
-      <label class="global-search"><span>⌕</span><input id="site-search" type="search" placeholder="Suche nach Spielern, Items …" aria-label="Website durchsuchen"></label>
       <div class="top-actions">
         
         
@@ -229,7 +228,7 @@ async function renderHome() {
           <button class="btn" data-route="chat">Community öffnen <span>→</span></button>
           <button class="btn secondary" data-route="leaderboards">Rankings ansehen</button>
         </div>
-        ${currentUser?'<p class="muted home-greeting">Willkommen zurück, <strong>'+esc(hello)+'</strong>.'+(isAdmin()?' <span class="admin-crown">♛ ADMIN</span>':"")+'</p>':'<p class="muted home-greeting">Melde dich an und werde Teil der Community.</p>'}
+        ${currentUser?'<p class="muted home-greeting">Willkommen zurück, <strong>'+esc(hello)+'</strong>.'+'</p>':'<p class="muted home-greeting">Melde dich an und werde Teil der Community.</p>'}
       </div>
       <div class="hero-crest-panel">
         <div class="hero-crest-glow"></div>
@@ -628,7 +627,15 @@ function wireReaction() {
     const {data:game}=await db.from("minigames").select("id").eq("slug",slug).single();
     if(!game)return;
     const {error}=await db.from("minigame_results").insert({minigame_id:game.id,user_id:currentUser.id,score:Math.max(0,Math.round(score||0)),time_ms:timeMs??null,won:Boolean(won),metadata});
-    if(error)toast("Ergebnis konnte nicht gespeichert werden: "+error.message,"error");else toast("Ergebnis gespeichert!","success");
+    if(error)toast("Ergebnis konnte nicht gespeichert werden: "+error.message,"error");
+    else {
+      toast("Ergebnis gespeichert!","success");
+      window.setTimeout(()=>{
+        if(!$("game-stage")||$("game-stage").hidden)return;
+        $("game-area").innerHTML='<div class="game-center"><div class="muted">Bereit für die nächste Runde?</div><button class="btn" data-game-replay="'+esc(slug)+'">Nochmal spielen</button></div>';
+        $("game-area").querySelector("[data-game-replay]")?.addEventListener("click",()=>open(slug));
+      },1400);
+    }
   };
   const open=(slug)=>{
     if(!currentUser){go("login");return;}
@@ -725,8 +732,11 @@ async function loadAdminSection(section) {
       const {data,error}=await db.from("bans").select("id,user_id,reason,starts_at,expires_at,profiles(username)").eq("active",true).order("starts_at",{ascending:false}).limit(100);if(error)throw error;
       node.innerHTML='<div class="card"><h2>Aktive Sperren</h2><div class="list">'+((data??[]).map(b=>'<article class="list-item"><div class="item-head"><strong>'+esc(b.profiles?.username||b.user_id)+'</strong><span class="pill red">GESPERRT</span></div><p>'+esc(b.reason)+'</p><div class="inline-meta">Seit '+dateTime(b.starts_at)+' · Ende: '+(b.expires_at?dateTime(b.expires_at):"Unbefristet")+'</div><div class="action-group"><button class="btn small secondary" data-unban="'+b.user_id+'">Entbannen</button></div></article>').join("")||empty("Keine aktiven Sperren."))+'</div></div>';
     } else if(section==="verifications"){
-      const {data,error}=await db.from("verification_requests").select("id,user_id,minecraft_name,status,requested_at,profiles(username)").eq("status","pending").order("requested_at");if(error)throw error;
-      node.innerHTML='<div class="card"><h2>Offene Minecraft-Verifizierungen</h2><div class="list">'+((data??[]).map(v=>'<article class="list-item"><div class="item-head"><strong>'+esc(v.profiles?.username||v.user_id)+'</strong><span class="pill red">pending</span></div><p>Minecraft: <strong>'+esc(v.minecraft_name)+'</strong></p><div class="inline-meta">'+dateTime(v.requested_at)+'</div><div class="action-group"><button class="btn small" data-verify="yes" data-id="'+v.id+'">Verifizieren</button><button class="btn small danger" data-verify="no" data-id="'+v.id+'">Ablehnen</button></div></article>').join("")||empty("Keine offenen Anträge."))+'</div></div>';
+      const {data,error}=await db.from("verification_requests").select("id,user_id,minecraft_name,status,requested_at").eq("status","pending").order("requested_at");if(error)throw error;
+      const verifyIds=[...new Set((data??[]).map(v=>v.user_id).filter(Boolean))];
+      let verifyProfiles=new Map();
+      if(verifyIds.length){const {data:profilesData,error:profilesError}=await db.from("profiles").select("id,username,display_name").in("id",verifyIds);if(profilesError)console.warn("Minecraft profiles:",profilesError.message);verifyProfiles=new Map((profilesData??[]).map(p=>[p.id,p]));}
+      node.innerHTML='<div class="card"><h2>Offene Minecraft-Verifizierungen</h2><p class="muted">Minecraft-Anträge werden getrennt von Profil-Daten geladen, damit der Admin-Bereich auch bei fehlerhaften Beziehungen funktioniert.</p><div class="list">'+((data??[]).map(v=>{const p=verifyProfiles.get(v.user_id);return '<article class="list-item"><div class="item-head"><strong>'+esc(p?.display_name||p?.username||v.user_id)+'</strong><span class="pill red">pending</span></div><p>Minecraft: <strong>'+esc(v.minecraft_name)+'</strong></p><div class="inline-meta">'+dateTime(v.requested_at)+'</div><div class="action-group"><button class="btn small" data-verify="yes" data-id="'+v.id+'">Verifizieren</button><button class="btn small danger" data-verify="no" data-id="'+v.id+'">Ablehnen</button></div></article>';}).join("")||empty("Keine offenen Anträge."))+'</div></div>';
     } else if(section==="applications"){
       const {data,error}=await db.from("applications").select("id,user_id,desired_role,reason,experience,status,created_at,profiles(username)").order("created_at",{ascending:false}).limit(50);if(error)throw error;
       const appMsgResults=await Promise.all((data??[]).map(async a=>{
@@ -776,7 +786,7 @@ async function loadAdminSection(section) {
       const {data,error}=await db.from("maintenance_windows").select("*").eq("id",1).single();if(error)throw error;
       node.innerHTML='<div class="card"><h2>Website Maintenance</h2><p class="muted">Bei aktivierter Wartung sehen normale Besucher eine Wartungsseite. Admins können die Seite weiterhin verwalten.</p><form id="maintenance-form" class="form"><label class="item-head"><span>Wartungsmodus</span><input type="checkbox" name="enabled" '+(data.enabled?"checked":"")+'></label><div class="field"><label>Nachricht</label><input class="input" name="message" value="'+esc(data.message)+'"></div><button class="btn">Einstellung speichern</button></form></div>';
     } else if(section==="console"){
-      node.innerHTML='<div class="card"><h2>Safe Admin Console</h2><p class="muted">Nur freigegebene Website-Befehle. Keine Shell, keine SQL-Konsole.</p><form id="console-form" class="chat-compose"><input class="input" name="command" placeholder="/ban Spieler Regelverstoß" required><button class="btn">Ausführen</button></form><div class="form-note" style="margin-top:12px">Befehle: /ban, /unban, /mute, /unmute, /maintenance on|off, /announce Titel|Nachricht</div><div class="notice" id="console-output" style="margin-top:12px">Warte auf Befehl.</div></div>';
+      node.innerHTML='<div class="card"><h2>Safe Admin Console</h2><p class="muted">Nur freigegebene Website-Befehle. Keine Shell, keine SQL-Konsole.</p><div class="console-command-grid"><button type="button" class="console-command" data-console-command="/maintenance on">Maintenance AN</button><button type="button" class="console-command" data-console-command="/maintenance off">Maintenance AUS</button><button type="button" class="console-command" data-console-command="/announce Server Update|KRAKE SMP Update ist live!">Announcement</button><button type="button" class="console-command" data-console-command="/ban Spieler Regelverstoß">Ban-Vorlage</button><button type="button" class="console-command" data-console-command="/unban Spieler">Unban-Vorlage</button><button type="button" class="console-command" data-console-command="/mute Spieler Chatregel">Mute-Vorlage</button><button type="button" class="console-command" data-console-command="/unmute Spieler">Unmute-Vorlage</button></div><form id="console-form" class="chat-compose"><input class="input" name="command" placeholder="/ban Spieler Regelverstoß" required><button class="btn">Ausführen</button></form><div class="form-note" style="margin-top:12px">Befehle sind klickbar und werden nur als freigegebene Admin-Aktionen ausgeführt.</div><div class="notice" id="console-output" style="margin-top:12px">Warte auf Befehl.</div></div>';
     }
   } catch(error) {
     node.innerHTML='<div class="notice error">Bereich konnte nicht geladen werden: '+esc(error.message)+'</div>';
@@ -857,6 +867,10 @@ function wireAdminSection(section) {
     e.preventDefault();const f=new FormData(e.currentTarget);
     try{await callAdmin("maintenance",{enabled:e.currentTarget.elements.enabled.checked,message:String(f.get("message")||"")});toast("Maintenance-Einstellung gespeichert.","success");}catch(error){toast(error.message,"error");}
   });
+  node.querySelectorAll("[data-console-command]").forEach(button=>button.addEventListener("click",()=>{
+    const input=$("console-form")?.elements?.command;
+    if(input){input.value=button.dataset.consoleCommand;input.focus();}
+  }));
   $("console-form")?.addEventListener("submit",async e=>{
     e.preventDefault();const command=String(new FormData(e.currentTarget).get("command")||"").trim();
     const out=$("console-output");
