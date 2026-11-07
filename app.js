@@ -1,7 +1,9 @@
 "use strict";
 
-const CFG = window.KRAKE_CONFIG;
-const db = window.supabase.createClient(CFG.supabaseUrl, CFG.publishableKey, { auth: { storage: window.sessionStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
+const CFG = window.KRAKE_CONFIG || { supabaseUrl: "", publishableKey: "", authFunction: "krake-auth" };
+const supabaseLib = window.supabase;
+const db = supabaseLib?.createClient ? supabaseLib.createClient(CFG.supabaseUrl, CFG.publishableKey, { auth: { storage: window.sessionStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } }) : null;
+function requireDb(){ if(!db) throw new Error("Die Datenbank-Bibliothek konnte nicht geladen werden. Bitte Seite neu laden."); return db; }
 const root = document.getElementById("app");
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({
@@ -839,14 +841,24 @@ async function checkMaintenance() {
 }
 
 async function render() {
+  // Render the shell immediately so a slow/unavailable backend can never leave the
+  // visitor stuck forever on the initial "wird geladen" screen.
   try {
+    shell('<section class="page-head"><div class="eyebrow">KRAKE SMP</div><h1>Willkommen</h1><p>Community Portal wird geladen …</p></section><section class="card"><p class="muted">Verbindung wird hergestellt.</p></section>');
+  } catch(error) {
+    console.error("Initial shell failed", error);
+    return;
+  }
+  try {
+    if(!db) throw new Error("Supabase konnte nicht geladen werden.");
     await refreshAuth();
     await renderPage();
     await checkMaintenance();
   } catch(error) {
     console.error(error);
-    shell('<section class="card"><h2>Startfehler</h2><p class="muted">'+esc(error.message)+'</p></section>');
+    shell('<section class="card"><div class="eyebrow">SYSTEM</div><h2>KRAKE SMP ist erreichbar</h2><p class="muted">Die Verbindung zum Backend konnte gerade nicht hergestellt werden.</p><button class="btn secondary" onclick="location.reload()">Erneut versuchen</button></section>');
   }
 }
 window.addEventListener("hashchange",()=>renderPage());
 window.addEventListener("load",()=>render());
+window.setTimeout(()=>{ if(root && root.querySelector(".boot")) render(); },2500);
