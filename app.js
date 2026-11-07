@@ -580,21 +580,25 @@ function wireLogin() {
   };
 }
 async function loadChatMessages() {
-  const {data,error}=await db.from("chat_messages").select("id,user_id,message,created_at")
-    .is("deleted_at",null).order("created_at",{ascending:false}).limit(100);
+  const {data,error}=await db.from("chat_messages").select("id,user_id,message,created_at").is("deleted_at",null).order("created_at",{ascending:false}).limit(100);
   if(error)throw error;
-  const rows=(data??[]).reverse();
-  const ids=[...new Set(rows.map(m=>m.user_id).filter(Boolean))];
+  const rows=(data??[]).reverse(),ids=[...new Set(rows.map(m=>m.user_id).filter(Boolean))];
   let profilesById=new Map();
   if(ids.length){
-    const {data:profilesData}=await db.from("profiles").select("id,username,display_name,verified").in("id",ids);
-    profilesById=new Map((profilesData??[]).map(p=>[p.id,p]));
+    const {data:profilesData,error:profilesError}=await db.from("profiles").select("id,username,display_name,verified").in("id",ids);
+    if(profilesError)throw profilesError;
+    const {data:roleRows,error:roleError}=await db.from("user_roles").select("user_id,roles(name,display_name,priority)").in("user_id",ids);
+    if(roleError)console.warn("Chat role refresh failed:",roleError.message);
+    const rolesById=new Map();
+    (roleRows??[]).forEach(r=>{if(!rolesById.has(r.user_id))rolesById.set(r.user_id,[]);if(r.roles)rolesById.get(r.user_id).push(r.roles);});
+    profilesById=new Map((profilesData??[]).map(p=>[p.id,{...p,roles:rolesById.get(p.id)||[]}]));
   }
   lastChatMessages=rows.map(m=>({...m,profiles:profilesById.get(m.user_id)||null}));
   const node=$("chat-window");if(!node)return;
-  node.innerHTML=lastChatMessages.map(m=>'<article class="chat-message"><div><span class="who">'+esc(m.profiles?.display_name||m.profiles?.username||"Player")+badge(m.profiles?.verified)+'</span><span class="when">'+dateTime(m.created_at)+'</span>'+(currentUser&&currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':"")+'</div><p>'+esc(m.message)+'</p></article>').join("")||empty("Noch keine Nachrichten. Starte die Unterhaltung!");
+  node.innerHTML=lastChatMessages.map(chatMessageMarkup).join("")||empty("Noch keine Nachrichten. Starte die Unterhaltung!");
   node.scrollTop=node.scrollHeight;
 }
+
 function showConfirm(title,message,confirmText="Bestätigen"){return new Promise(resolve=>{const old=$("krake-confirm");if(old)old.remove();const el=document.createElement("div");el.id="krake-confirm";el.className="krake-modal";el.innerHTML='<div class="krake-modal-backdrop"></div><div class="krake-modal-card confirm-modal"><button class="modal-close" type="button" data-confirm-no>×</button><div class="eyebrow">BESTÄTIGUNG</div><h2>'+esc(title)+'</h2><p class="muted">'+esc(message)+'</p><div class="action-row"><button class="btn danger" data-confirm-yes>'+esc(confirmText)+'</button><button class="btn secondary" data-confirm-no>Abbrechen</button></div></div>';document.body.appendChild(el);const done=v=>{el.remove();resolve(v);};el.querySelectorAll("[data-confirm-no]").forEach(b=>b.onclick=()=>done(false));el.querySelector("[data-confirm-yes]").onclick=()=>done(true);el.querySelector(".krake-modal-backdrop").onclick=()=>done(false);});}
 
 function wireChat() {
