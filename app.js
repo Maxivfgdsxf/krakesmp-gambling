@@ -77,21 +77,22 @@ async function callAdmin(command,args={}) {
 async function authFunction(payload) {
   const { data, error } = await db.functions.invoke(CFG.authFunction,{body:payload});
   if (error) {
-    // Supabase's invoke() often hides the JSON error body behind the generic
-    // "Edge Function returned a non-2xx status code" message. Read the
-    // response body so users get the real authentication error.
-    try {
-      const response = error.context;
-      if (response && typeof response.clone === "function") {
-        const body = await response.clone().json();
+    // Read the JSON response body before showing Supabase's generic HTTP error.
+    const response = error.context;
+    if (response && typeof response.clone === "function") {
+      try {
+        const raw = await response.clone().text();
+        let body = null;
+        try { body = JSON.parse(raw); } catch { body = null; }
         if (body?.error) throw new Error(String(body.error));
+      } catch (readError) {
+        if (readError instanceof Error && readError.message !== error.message) throw readError;
       }
-    } catch (bodyError) {
-      if (bodyError instanceof Error && bodyError.message !== error.message) throw bodyError;
     }
-    throw error;
+    throw new Error(error.message || "Authentifizierung fehlgeschlagen.");
   }
-  if (data?.error) throw new Error(data.error);
+  if (data?.error) throw new Error(String(data.error));
+  if (!data?.ok) throw new Error("Die Authentifizierung konnte nicht abgeschlossen werden.");
   return data;
 }
 async function refreshAuth() {
@@ -123,10 +124,13 @@ function shell(content) {
   ).join("");
   root.innerHTML = `
     <header class="topbar">
-      <button class="icon-btn" id="menu-open" aria-label="Menü öffnen">☰</button>
+      <button class="icon-btn menu-toggle" id="menu-open" aria-label="Menü öffnen">☰</button>
       <a class="brand" href="#home"><span class="brand-logo" aria-hidden="true">${KRAKEN_CREST}</span><span>KRAKE SMP</span></a>
+      <label class="global-search"><span>⌕</span><input id="site-search" type="search" placeholder="Suche nach Spielern, Items …" aria-label="Website durchsuchen"></label>
       <div class="top-actions">
-        <span class="account-chip">${esc(display)}</span>
+        <a class="wallet-chip" href="#market"><span>◉</span> Market</a>
+        ${isAdmin()?'<button class="crown-btn" id="admin-quick" aria-label="Admin Panel" title="Admin Panel">♛</button>':""}
+        <span class="account-chip">${esc(display)}${isAdmin()?' <span class="admin-crown">♛</span>':""}</span>
         <button class="icon-btn" id="account-open" aria-label="Profil öffnen">◎</button>
       </div>
     </header>
@@ -150,10 +154,21 @@ function shell(content) {
     <footer class="site-footer">KRAKE SMP · COMMUNITY PORTAL · BUILT FOR THE COMMUNITY</footer>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
   `;
-  $("menu-open").onclick=openDrawer;
+  $("menu-open").onclick=()=>$( "drawer" )?.classList.toggle("open");
   $("menu-close").onclick=closeDrawer;
   $("drawer-back").onclick=closeDrawer;
   $("account-open").onclick=()=>go(currentUser?"profile":"login");
+  $("admin-quick")?.addEventListener("click",()=>go("admin"));
+  $("site-search")?.addEventListener("keydown",event=>{
+    if(event.key!=="Enter")return;
+    const q=event.currentTarget.value.toLowerCase();
+    const route=q.includes("chat")?"chat":q.includes("minigame")||q.includes("spiel")?"minigames":
+      q.includes("markt")||q.includes("market")||q.includes("item")?"market":
+      q.includes("event")?"events":q.includes("rang")||q.includes("leader")?"leaderboards":
+      q.includes("einstellung")||q.includes("minecraft")?"settings":
+      q.includes("profil")||q.includes("spieler")?"leaderboards":"";
+    if(route)go(route);else toast("Kein passender Bereich gefunden.");
+  });
   $("auth-nav").onclick=async()=>{
     if (!currentUser) return go("login");
     await db.auth.signOut(); await refreshAuth(); go("home"); await render();
@@ -166,45 +181,76 @@ function pageHead(eyebrow,title,desc="") {
 function empty(message) { return '<div class="empty">'+esc(message)+'</div>'; }
 
 async function renderHome() {
-  const [events,announcements] = await Promise.all([
+  const [events,announcements,leaders,chats,marketItems,balance] = await Promise.all([
     db.from("events").select("name,description,starts_at,ends_at").eq("active",true).limit(1),
-    db.from("announcements").select("title,message,created_at").eq("active",true).order("created_at",{ascending:false}).limit(2)
+    db.from("announcements").select("title,message,created_at").eq("active",true).order("created_at",{ascending:false}).limit(2),
+    db.from("player_statistics").select("user_id,rating,wins,games_played,total_score,profiles(username,verified)").order("rating",{ascending:false}).limit(3),
+    db.from("chat_messages").select("id,user_id,message,created_at,profiles(username,verified)").is("deleted_at",null).order("created_at",{ascending:false}).limit(3),
+    db.from("market_items").select("id,symbol,name").eq("active",true).order("symbol").limit(3),
+    currentUser?db.from("user_balances").select("balance").eq("user_id",currentUser.id).maybeSingle():Promise.resolve({data:null,error:null})
   ]);
-  const event = events.data?.[0];
-  const hello = profile?.display_name || profile?.username || "Spieler";
-  const announcementHtml = (announcements.data??[]).map(a=>'<article class="list-item"><div class="item-title">'+esc(a.title)+'</div><p>'+esc(a.message)+'</p><div class="inline-meta">'+dateTime(a.created_at)+'</div></article>').join("");
+  for (const result of [events,announcements,leaders,chats,marketItems,balance]) {
+    if(result?.error) console.warn("Home section:",result.error.message);
+  }
+  const event=events.data?.[0];
+  const hello=profile?.display_name||profile?.username||"Spieler";
+  const announcementHtml=(announcements.data??[]).map(a=>'<article class="list-item"><div class="item-title">'+esc(a.title)+'</div><p>'+esc(a.message)+'</p><div class="inline-meta">'+dateTime(a.created_at)+'</div></article>').join("");
+  const leaderHtml=(leaders.data??[]).map((p,i)=>'<div class="leader-row"><span class="leader-rank">'+(i+1)+'</span><span class="leader-avatar">♟</span><strong>'+esc(p.profiles?.username||"Player")+'</strong><span>'+number(p.rating)+' RP</span></div>').join("");
+  const chatHtml=(chats.data??[]).map(m=>'<div class="home-chat-row"><strong>'+esc(m.profiles?.username||"Player")+'</strong><span>'+dateTime(m.created_at)+'</span><p>'+esc(m.message)+'</p></div>').join("");
+  const marketHtml=(marketItems.data??[]).map(m=>'<div class="market-mini-row"><span class="market-mini-icon">◆</span><div><strong>'+esc(m.name)+'</strong><small>'+esc(m.symbol)+'</small></div></div>').join("");
   return `
-    <section class="hero">
+    <section class="home-hero">
       <div class="hero-copy">
-        <div class="eyebrow">KRAKE SMP · COMMUNITY PORTAL</div>
-        <h1>DEINE <span class="red-word">KRAKE</span><span>COMMUNITY.</span></h1>
-        <p class="lead">Alles an einem Ort. Triff deine Community im Chat, vergleiche deine Stats, bewirb dich fürs Team und verwalte deine Minecraft-Verknüpfung.</p>
+        <div class="hero-welcome">Willkommen auf</div>
+        <h1><span class="red-word">KRAKE</span> <span class="metal-word">SMP</span></h1>
+        <p class="home-tagline">Deine Community. Dein <strong>SMP.</strong> Deine Welt.</p>
+        <p class="home-description">Ein Ort für deine Crew: Community-Chat, Minigames, Rankings, Events und Services – alles vereint in deinem KRAKE SMP Portal.</p>
         <div class="action-row">
-          <button class="btn" data-route="chat">Zum Community-Chat <span>→</span></button>
+          <button class="btn" data-route="chat">Community öffnen <span>→</span></button>
           <button class="btn secondary" data-route="leaderboards">Rankings ansehen</button>
         </div>
-        ${currentUser?'<p class="muted">Willkommen zurück, <strong>'+esc(hello)+'</strong>.</p>':'<p class="muted">Neu hier? Erstelle deinen Community-Account in wenigen Schritten.</p>'}
+        ${currentUser?'<p class="muted home-greeting">Willkommen zurück, <strong>'+esc(hello)+'</strong>.'+(isAdmin()?' <span class="admin-crown">♛ ADMIN</span>':"")+'</p>':'<p class="muted home-greeting">Melde dich an und werde Teil der Community.</p>'}
       </div>
-      <aside class="panel hero-panel">
-        <div class="status-line"><span class="status-dot"></span> PORTAL BEREIT</div>
-        <div class="crest-orb">${KRAKEN_CREST}</div>
-        <div class="panel-footer"><span>🛡 KRAKE SMP</span><span class="pill red">COMMUNITY HUB</span></div>
-        <p class="form-note">Der Live-Status des Minecraft-Servers wird verbunden, sobald die Server-API bereitsteht.</p>
-      </aside>
-    </section>
-    <section class="section grid two">
-      <div class="card"><div class="section-head"><div><div class="eyebrow">SEASONAL</div><h2>Aktuelles Event</h2></div><span class="pill ${event?"red":""}">${event?"LIVE":"YEAR ROUND"}</span></div>
-        <h3>${esc(event?.name||"KRAKE Community")}</h3><p>${esc(event?.description||"Hier erscheinen aktuelle Server-Specials, Community-Events und saisonale Aktionen. Das Grunddesign bleibt das ganze Jahr über aktiv.")}</p>
-        <button class="btn secondary small" data-route="events">Alle Events</button>
+      <div class="hero-crest-panel">
+        <div class="hero-crest-glow"></div>
+        ${KRAKEN_CREST}
+        <div class="hero-crest-caption"><span class="status-dot"></span> KRAKE COMMUNITY HUB</div>
       </div>
-      <div class="card"><div class="section-head"><div><div class="eyebrow">PLAYER SERVICES</div><h2>Community Services</h2></div><span class="pill">V1</span></div>
-        <div class="list"><div class="item-head"><span>🏗 Building Service</span><button class="btn ghost small" data-route="building">Öffnen</button></div><div class="item-head"><span>✧ Team bewerben</span><button class="btn ghost small" data-route="applications">Öffnen</button></div><div class="item-head"><span>⚙ Minecraft verbinden</span><button class="btn ghost small" data-route="settings">Öffnen</button></div></div>
+      <div class="hero-quick-stats">
+        <a href="#chat"><span class="quick-stat-icon">◉</span><strong>Community Chat</strong><small>Live-Unterhaltungen</small></a>
+        <a href="#minigames"><span class="quick-stat-icon">⚔</span><strong>Minigames</strong><small>Skill & Challenges</small></a>
+        <a href="#leaderboards"><span class="quick-stat-icon">♛</span><strong>Leaderboard</strong><small>Spieler-Rankings</small></a>
+        <a href="#market"><span class="quick-stat-icon">◆</span><strong>${number(balance.data?.balance??0)}</strong><small>Deine Coins</small></a>
       </div>
     </section>
-    ${announcementHtml?'<section class="section"><div class="section-head"><div><div class="eyebrow">NEWS</div><h2>Neuigkeiten</h2></div></div><div class="list">'+announcementHtml+'</div></section>':""}
+    <section class="home-dashboard-grid">
+      <article class="card home-leader-card">
+        <div class="home-card-head"><div><span class="eyebrow">COMPETITIVE</span><h2>Top 3 Leaderboard</h2></div><a href="#leaderboards">Alle ansehen →</a></div>
+        <div class="leader-list">${leaderHtml||empty("Noch keine Spieler-Rankings vorhanden.")}</div>
+      </article>
+      <article class="card home-event-card">
+        <div class="home-card-head"><div><span class="eyebrow">SEASONAL</span><h2>Event</h2></div><a href="#events">Alle Events →</a></div>
+        <div class="event-visual"><div class="event-sigil">✦</div><span class="pill ${event?"red":""}">${event?"AKTIV":"YEAR ROUND"}</span></div>
+        <h3>${esc(event?.name||"KRAKE Community")}</h3>
+        <p>${esc(event?.description||"Hier erscheinen die nächsten Community-Events und SMP-Specials.")}</p>
+        <button class="btn secondary small" data-route="events">Mehr erfahren →</button>
+      </article>
+      <article class="card home-chat-card">
+        <div class="home-card-head"><div><span class="eyebrow">COMMUNITY</span><h2>Community Chat</h2></div><a href="#chat">Öffnen →</a></div>
+        <div class="home-chat-list">${chatHtml||empty("Noch keine Nachrichten im Chat.")}</div>
+        <button class="btn small" data-route="chat">Zum Chat senden</button>
+      </article>
+      <article class="card home-market-card">
+        <div class="home-card-head"><div><span class="eyebrow">VIRTUAL ECONOMY</span><h2>Krake Market</h2></div><a href="#market">Zum Market →</a></div>
+        <div class="market-mini-list">${marketHtml||empty("Noch keine Market-Assets vorhanden.")}</div>
+      </article>
+      <article class="card home-news-card">
+        <div class="home-card-head"><div><span class="eyebrow">UPDATES</span><h2>Community News</h2></div></div>
+        <div class="list">${announcementHtml||empty("Noch keine Neuigkeiten veröffentlicht.")}</div>
+      </article>
+    </section>
   `;
 }
-
 async function renderLogin() {
   if (currentUser) return '<div class="card auth-card"><div class="eyebrow">ACCOUNT</div><h2>Du bist angemeldet</h2><p class="muted">Angemeldet als '+esc(profile?.username||"Player")+'.</p><button class="btn" data-route="profile">Zum Profil</button></div>';
   return `
@@ -231,14 +277,14 @@ async function renderChat() {
   lastChatMessages = messages.data??[];
   const items = lastChatMessages.map(m=>`
     <article class="chat-message">
-      <div><span class="who">${esc(m.username||"Player")}${badge(m.profiles?.verified)}</span><span class="when">${dateTime(m.created_at)}</span>
+      <div><span class="who">${esc(m.profiles?.username||"Player")}${badge(m.profiles?.verified)}</span><span class="when">${dateTime(m.created_at)}</span>
       ${currentUser && currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':""}</div>
       <p>${esc(m.message)}</p>
     </article>
   `).join("");
   return pageHead("COMMUNITY","Globaler Chat","Schreib mit der KRAKE Community. Chat-Regeln gelten für alle Mitglieder.")+
     '<section class="card"><div class="chat-window" id="chat-window">'+(items||empty("Noch keine Nachrichten. Starte die Unterhaltung!"))+'</div>'+
-    (currentUser?'<form id="chat-form" class="chat-compose"><input class="input" id="chat-input" maxlength="2000" placeholder="Nachricht schreiben …" required><button class="btn">Senden</button></form>':'<div class="notice" style="margin-top:12px">Zum Schreiben bitte <button class="btn small" data-route="login">anmelden</button>.</div>')+
+    (currentUser?'<form id="chat-form" class="chat-compose"><input class="input" id="chat-input" maxlength="2000" placeholder="Nachricht schreiben …" required><button class="btn" type="submit">Senden</button></form>':'<div class="notice" style="margin-top:12px">Zum Schreiben bitte <button class="btn small" data-route="login">anmelden</button>.</div>')+
     '<p class="form-note">Nachrichten werden moderiert. Melde problematische Inhalte über „Melden“.</p></section>';
 }
 
@@ -431,11 +477,19 @@ async function loadChatMessages() {
 }
 function wireChat() {
   $("chat-form")?.addEventListener("submit",async event=>{
-    event.preventDefault();if(!currentUser)return;
+    event.preventDefault();if(!currentUser){toast("Bitte zuerst anmelden.","error");return;}
     const input=$("chat-input");const message=input.value.trim();if(!message)return;
+    const submit=event.currentTarget.querySelector("button[type=submit],button:not([type])");
+    if(submit)submit.disabled=true;
     const {error}=await db.from("chat_messages").insert({user_id:currentUser.id,message});
-    if(error){toast(error.message);return;}
-    input.value="";await loadChatMessages();
+    if(submit)submit.disabled=false;
+    if(error){
+      console.error("Chat send failed",error);
+      const reason=error.code==="42501"?"Du darfst gerade nicht schreiben. Prüfe, ob dein Account stummgeschaltet oder gesperrt ist.":error.message;
+      toast(reason,"error");return;
+    }
+    input.value="";
+    try{await loadChatMessages();}catch(refreshError){console.error(refreshError);}
   });
   $("chat-window")?.addEventListener("click",async event=>{
     const button=event.target.closest("[data-report]");if(!button||!currentUser)return;
