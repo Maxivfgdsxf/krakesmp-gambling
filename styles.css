@@ -549,3 +549,28 @@ body{background:
 .admin-aura i{position:relative;z-index:2;width:8px;height:8px;border-radius:50%;background:#fff;box-shadow:0 0 8px #fff,0 0 14px #ff5268}
 @keyframes adminAura{0%,100%{transform:scale(.9);opacity:.35}50%{transform:scale(1.12);opacity:.85}}
 .admin-aura:hover:after{animation-duration:.7s}
+
+/* Profile panel + house navigation + quiz UI */
+.topbar{position:relative}
+.topbar .top-actions{position:relative;min-width:0}
+.profile-popover{position:absolute;right:calc(100% + 12px);top:calc(100% + 10px);width:min(360px,82vw);display:none;grid-template-columns:auto 1fr;gap:12px;padding:18px;border:1px solid #692333;border-radius:18px;background:linear-gradient(145deg,#1c0a10,#09080c);box-shadow:0 24px 70px #000d,0 0 35px #ff183d22;z-index:80;overflow:hidden}
+.profile-popover.open{display:grid;animation:profileIn .18s ease-out}
+.profile-pop-glow{position:absolute;inset:-50%;background:radial-gradient(circle,#ff294d18,transparent 55%);pointer-events:none}
+.profile-pop-avatar{position:relative;z-index:1;display:grid;place-items:center;width:42px;height:42px;border:1px solid #7e2a39;border-radius:14px;background:#12090d;color:#ff6675;font-size:23px;box-shadow:0 0 18px #ff244833}
+.profile-pop-avatar.large{width:54px;height:54px;border-radius:16px;font-size:28px}
+.profile-popover h3,.profile-popover p,.profile-popover .eyebrow{position:relative;z-index:1;margin:0}
+.profile-popover p{margin-top:4px;color:#907980;font-size:12px}
+.profile-pop-actions{position:relative;z-index:1;grid-column:1/-1;display:flex;gap:8px;flex-wrap:wrap}
+@keyframes profileIn{from{opacity:0;transform:translateY(-6px) scale(.98)}to{opacity:1;transform:none}}
+.house-brand{display:grid;place-items:center}
+.house-mark{width:31px;height:31px;filter:drop-shadow(0 0 8px #ff244866);transition:.18s ease}
+.brand:hover .house-mark{transform:translateY(-1px) scale(1.06);filter:drop-shadow(0 0 13px #ff2448)}
+.quiz-selector{padding:30px}
+.quiz-difficulty-buttons{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-top:22px}
+.quiz-level{min-height:58px;font-size:15px;letter-spacing:.12em;border-color:#6c2331}
+.quiz-level:hover{transform:translateY(-2px);box-shadow:0 0 24px #ff244833}
+.quiz-live{padding:26px}
+.quiz-live-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:18px}
+.quiz-option{width:100%;text-align:left;margin-top:9px;padding:14px 16px}
+.quiz-result{padding:32px}
+@media(max-width:620px){.quiz-difficulty-buttons{grid-template-columns:1fr}.profile-popover{right:-10px;width:min(340px,90vw)}}
