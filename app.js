@@ -174,9 +174,19 @@ function shell(content) {
     <footer class="site-footer">KRAKE SMP · COMMUNITY PORTAL · <a href="#impressum">Impressum</a> · Made by Dev Mundi</footer>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
   `;
-  $("kraken-menu").onclick=()=>$( "drawer" )?.classList.toggle("open");
-  $("menu-close").onclick=closeDrawer;
-  $("drawer-back").onclick=closeDrawer;
+  const krakenMenu = $("kraken-menu");
+  const drawer = $("drawer");
+  const menuClose = $("menu-close");
+  const drawerBack = $("drawer-back");
+  if(krakenMenu && drawer){
+    krakenMenu.onclick = (event) => {
+      event.preventDefault();
+      event.stopPropagation();
+      drawer.classList.toggle("open");
+    };
+  }
+  if(menuClose) menuClose.onclick = closeDrawer;
+  if(drawerBack) drawerBack.onclick = closeDrawer;
   
   $("site-search")?.addEventListener("keydown",event=>{
     if(event.key!=="Enter")return;
