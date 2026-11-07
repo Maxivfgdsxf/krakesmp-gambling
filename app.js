@@ -287,12 +287,12 @@ async function renderLogin() {
       <p class="muted">Benutzername und Passwort. Kein E-Mail-Postfach und keine Zwei-Faktor-Pflicht.</p>
       <div class="auth-switch"><button class="btn" id="tab-login">Anmelden</button><button class="btn secondary" id="tab-signup">Account erstellen</button></div>
       <form class="form" id="auth-form">
-        <div class="field"><label for="auth-username">Benutzername</label><input class="input" id="auth-username" name="username" minlength="3" maxlength="20" pattern="[A-Za-z0-9_]{3,20}" autocomplete="username" required></div>
+        <div class="field"><label for="auth-username">Benutzername</label><input class="input" id="auth-username" name="username" minlength="3" maxlength="20" pattern="[A-Za-z0-9_]{3,20}" title="Bei der Registrierung nur Buchstaben und Zahlen (3–20 Zeichen)." autocomplete="username" required></div>
         <div class="field"><label for="auth-password">Passwort</label><input class="input" id="auth-password" name="password" type="password" minlength="12" autocomplete="current-password" required></div>
         <div id="signup-confirm" class="field hidden"><label for="auth-confirm">Passwort wiederholen</label><input class="input" id="auth-confirm" type="password" minlength="12" autocomplete="new-password"></div>
         <button class="btn" id="auth-submit">Einloggen</button>
       </form>
-      <div class="form-note" id="auth-message" aria-live="polite">Passwörter müssen mindestens 12 Zeichen mit Groß-/Kleinbuchstaben, Zahl und Sonderzeichen enthalten.</div>
+      <div class="form-note" id="auth-message" aria-live="polite">Melde dich mit deinem Benutzernamen und Passwort an.</div>
     </section>
   `;
 }
@@ -675,9 +675,11 @@ function wireLogin() {
     $("auth-submit").textContent=mode==="login"?"Einloggen":"Account erstellen";
     $("signup-confirm").classList.toggle("hidden",mode==="login");
     $("auth-password").autocomplete=mode==="login"?"current-password":"new-password";
+    $("auth-username").pattern=mode==="signup"?"[A-Za-z0-9]{3,20}":"[A-Za-z0-9_]{3,20}";
+    $("auth-username").title=mode==="signup"?"Nur Buchstaben und Zahlen, 3–20 Zeichen.":"Benutzername eingeben."; 
     $("tab-login").className=mode==="login"?"btn":"btn secondary";
     $("tab-signup").className=mode==="signup"?"btn":"btn secondary";
-    $("auth-message").textContent=mode==="login"?"Melde dich mit deinem Benutzernamen und Passwort an.":"Mindestens 12 Zeichen, Groß-/Kleinbuchstaben, Zahl und Sonderzeichen.";
+    $("auth-message").textContent=mode==="login"?"Melde dich mit deinem Benutzernamen und Passwort an.":"Benutzername: 3–20 Zeichen, nur Buchstaben und Zahlen. Passwort: mindestens 12 Zeichen mit Groß-/Kleinbuchstaben und Zahlen; keine Sonderzeichen.";
   };
   $("tab-login").onclick=()=>setMode("login");
   $("tab-signup").onclick=()=>setMode("signup");
@@ -686,7 +688,12 @@ function wireLogin() {
     const username=$("auth-username").value.trim().toLowerCase();
     const password=$("auth-password").value;
     const msg=$("auth-message");
-    if(!/^[a-z0-9_]{3,20}$/.test(username)){msg.textContent="Ungültiger Benutzername.";return;}
+    if(mode==="signup" ? !/^[a-z0-9]{3,20}$/.test(username) : !/^[a-z0-9_]{3,20}$/.test(username)){
+      msg.textContent=mode==="signup"?"Der Benutzername darf nur Buchstaben und Zahlen enthalten (3–20 Zeichen).":"Ungültiger Benutzername.";return;
+    }
+    if(mode==="signup" && !/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[A-Za-z0-9]{12,}$/.test(password)){
+      msg.textContent="Das Passwort muss mindestens 12 Zeichen lang sein und Großbuchstaben, Kleinbuchstaben sowie Zahlen enthalten. Sonderzeichen sind nicht erlaubt.";return;
+    }
     if(mode==="signup" && $("auth-confirm").value!==password){msg.textContent="Die Passwörter stimmen nicht überein.";return;}
     const button=$("auth-submit");button.disabled=true;msg.textContent="Bitte warten …";
     try{
@@ -1038,7 +1045,7 @@ function wireAdminSection(section) {
           const reason=prompt("Mute-Grund?","Moderation");if(reason===null)return;
           await callAdmin("mute",{user_id:id,reason});
         }else if(button.dataset.playerAction==="password"){
-          const newPassword=prompt("Neues Passwort (min. 12 Zeichen mit Groß-/Kleinbuchstaben, Zahl und Sonderzeichen):");if(!newPassword)return;
+          const newPassword=prompt("Neues Passwort (mind. 12 Zeichen; Groß-/Kleinbuchstaben und Zahlen, keine Sonderzeichen):");if(!newPassword)return;
           await authFunction({action:"admin_reset_password",user_id:id,new_password:newPassword});
         }
         toast("Spieler-Aktion abgeschlossen.","success");await loadAdminSection(section);
