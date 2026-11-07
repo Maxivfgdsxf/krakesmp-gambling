@@ -574,3 +574,19 @@ body{background:
 .quiz-option{width:100%;text-align:left;margin-top:9px;padding:14px 16px}
 .quiz-result{padding:32px}
 @media(max-width:620px){.quiz-difficulty-buttons{grid-template-columns:1fr}.profile-popover{right:-10px;width:min(340px,90vw)}}
+
+/* Role aura badges + moderation controls */
+.role-aura{position:relative;display:inline-grid;place-items:center;width:20px;height:20px;margin-left:6px;vertical-align:-4px;filter:drop-shadow(0 0 7px currentColor);cursor:help}
+.role-aura:before{content:"";position:absolute;inset:2px;border-radius:7px 7px 9px 9px;transform:rotate(45deg);background:currentColor;opacity:.22;border:1px solid currentColor}
+.role-aura:after{content:"";position:absolute;inset:-3px;border-radius:50%;border:1px solid currentColor;opacity:.45;animation:rolePulse 1.9s ease-in-out infinite}
+.role-aura i{position:relative;z-index:2;width:6px;height:6px;border-radius:50%;background:currentColor;box-shadow:0 0 8px currentColor}
+.role-admin{color:#ff2448}.role-moderator{color:#b66cff}.role-helper{color:#57b7ff}.role-media{color:#ffb84d}.role-verified{color:#62e6a5}
+.role-aura:hover:after{opacity:1;transform:scale(1.15)}
+@keyframes rolePulse{0%,100%{transform:scale(.9);opacity:.25}50%{transform:scale(1.12);opacity:.75}}
+.chat-actions{display:inline-flex;gap:5px;flex-wrap:wrap;margin-left:8px;vertical-align:middle}
+.chat-actions .btn{padding:4px 8px;font-size:10px}
+.ticket-modal-card .item-head h2{margin:0}
+.ticket-modal-card .muted strong{color:#fff}
+.ticket-row{position:relative}
+.ticket-row:after{content:"";position:absolute;inset:0;border-radius:15px;pointer-events:none;box-shadow:inset 0 0 0 1px transparent;transition:.18s}
+.ticket-row:hover:after{box-shadow:inset 0 0 0 1px #ff3d5566}
