@@ -21,7 +21,7 @@ async function renderEconomy(){
  db.from("economy_purchases").select("item_id").eq("user_id",currentUser.id),
  db.from("economy_duels").select("id,creator_id,mode,stake,created_at").eq("status","open").order("created_at",{ascending:false}).limit(20),
  db.rpc("economy_leaderboard"),
- db.from("events").select("id,name,description,starts_at,ends_at,active").order("starts_at",{ascending:false}).limit(12),
+ db.from("events").select("id,name,description,starts_at,ends_at,active,config").order("starts_at",{ascending:false}).limit(12),
  db.from("economy_event_entries").select("event_id,claimed_at").eq("user_id",currentUser.id)
  ];
  const rs=await Promise.all(jobs);rs.forEach(r=>{if(r.error)throw r.error;});
