@@ -374,7 +374,10 @@ async function fetchLeaderboardSnapshot(){
   if(resultsResult.error)throw resultsResult.error;
   const games=gamesResult.data??[],results=resultsResult.data??[];
   const ids=[...new Set(results.map(r=>r.user_id).filter(Boolean))],rolesByUser=new Map();
-  if(ids.length){
+  // Rollen sind für die öffentliche Leaderboard-Ansicht nicht nötig.
+  // user_roles ist absichtlich auf angemeldete Nutzer/Admins beschränkt, daher
+  // darf ein anonymer Leaderboard-Aufruf diese Tabelle nicht abfragen.
+  if(currentUser && ids.length){
     const {data:roleRows,error:roleError}=await db.from("user_roles").select("user_id,roles(name,display_name,priority)").in("user_id",ids);
     if(roleError)throw roleError;
     (roleRows??[]).forEach(row=>{if(!rolesByUser.has(row.user_id))rolesByUser.set(row.user_id,[]);if(row.roles)rolesByUser.get(row.user_id).push(row.roles);});
@@ -411,26 +414,42 @@ async function renderLeaderboards(){
 }
 
 function marketItemArtwork(symbol){
-  const open='<svg class="market-item-svg" viewBox="0 0 220 190" role="img" aria-label="'+(symbol==='SKELETON'?'Skeleton Spawner':symbol==='ELYTRA_ENCH'?'Verzauberte Elytra':symbol==='ELYTRA'?'Elytra':'Verzauberter goldener Apfel')+'" xmlns="http://www.w3.org/2000/svg">';
+  const label = symbol==="SKELETON" ? "Skeleton-Spawner" :
+    symbol==="ELYTRA_ENCH" ? "Verzauberte Elytra" :
+    symbol==="ELYTRA" ? "Elytra" :
+    symbol==="EGAPPLE" ? "Verzauberter goldener Apfel" : "Minecraft Item";
+  const open='<svg class="market-item-svg minecraft-pixel-art" viewBox="0 0 128 128" role="img" aria-label="'+label+'" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">';
   if(symbol==="SKELETON")return open+
-    '<defs><linearGradient id="spStone" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#7c8792"/><stop offset=".5" stop-color="#3b444f"/><stop offset="1" stop-color="#151b24"/></linearGradient><linearGradient id="spBars"><stop stop-color="#fff0ae"/><stop offset=".5" stop-color="#c28b40"/><stop offset="1" stop-color="#684524"/></linearGradient></defs>'+
-    '<ellipse cx="110" cy="157" rx="75" ry="14" fill="#000" opacity=".5"/><path d="M110 18 188 59 110 101 32 59Z" fill="url(#spStone)" stroke="#9ca8b3" stroke-width="3"/><path d="M32 59 110 101 110 174 32 132Z" fill="#252d37" stroke="#74818d" stroke-width="3"/><path d="M188 59 110 101 110 174 188 132Z" fill="#414b57" stroke="#8c98a4" stroke-width="3"/>'+
-    '<path d="M44 66 110 102 110 160 44 124Z M176 66 110 102 110 160 176 124Z" fill="#101720"/><g fill="none" stroke="url(#spBars)" stroke-width="4" stroke-linecap="round"><path d="M51 58 51 127 M70 68 70 137 M90 79 90 148 M110 89 110 160 M130 89 130 148 M150 78 150 137 M169 68 169 127"/><path d="M40 86 110 124 180 86 M40 108 110 147 180 108"/></g>'+
-    '<path d="M96 119Q82 99 101 83Q101 99 112 100Q126 80 120 72Q146 101 126 122Z" fill="#ff8a25"/><path d="M105 124Q99 110 112 101Q121 115 116 127Z" fill="#fff1b6"/><g fill="#dfe6eb" stroke="#66717c" stroke-width="2"><path d="M100 84 110 78 121 83 127 96 122 108 112 114 101 107 96 96Z"/><path d="M98 90 105 88 106 95 100 97Z M117 90 124 88 124 96 118 97Z" fill="#1c222c" stroke="none"/><path d="M105 103 119 103 115 110 108 110Z" fill="#303944" stroke="none"/></g>'+
-    '<path d="M32 59 110 101 188 59 M110 101V174" fill="none" stroke="#c4cbd1" stroke-width="2" opacity=".55"/><g fill="#ffdb82"><path d="M28 30l5 12 12 5-12 5-5 12-5-12-12-5 12-5Z"/><circle cx="190" cy="32" r="3"/><circle cx="198" cy="116" r="2.5"/></g></svg>';
-  if(symbol==="ELYTRA")return open+
-    '<defs><linearGradient id="elyLeather" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#f7e8cc"/><stop offset=".32" stop-color="#b4a084"/><stop offset=".7" stop-color="#645b52"/><stop offset="1" stop-color="#282e35"/></linearGradient><linearGradient id="elySeam"><stop stop-color="#fff3d6"/><stop offset="1" stop-color="#75624b"/></linearGradient></defs>'+
-    '<ellipse cx="110" cy="151" rx="78" ry="12" fill="#000" opacity=".4"/><path d="M108 88Q73 31 20 42L37 113Q53 139 100 126L110 111Z" fill="url(#elyLeather)" stroke="url(#elySeam)" stroke-width="4" stroke-linejoin="round"/><path d="M112 88Q147 31 200 42L183 113Q167 139 120 126L110 111Z" fill="url(#elyLeather)" stroke="url(#elySeam)" stroke-width="4" stroke-linejoin="round"/>'+
-    '<path d="M27 50 55 58 74 114 43 106Z M193 50 165 58 146 114 177 106Z" fill="#f9edd7" opacity=".48"/><path d="M42 47 69 61 89 119 M178 47 151 61 131 119" fill="none" stroke="#f9edda" stroke-width="3"/><path d="M53 84 89 119 M167 84 131 119" stroke="#48423e" stroke-width="5" stroke-linecap="round"/><path d="M110 76 96 91 102 133 110 142 118 133 124 91Z" fill="#80705e" stroke="#e8d8bb" stroke-width="3"/><path d="M110 83V135" stroke="#403a35" stroke-width="3"/><path d="M76 44 94 70 M144 44 126 70" stroke="#fff5e6" stroke-width="2" opacity=".8"/></svg>';
-  if(symbol==="ELYTRA_ENCH")return open+
-    '<defs><linearGradient id="elyMagic" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#dfffff"/><stop offset=".25" stop-color="#6ce2d7"/><stop offset=".58" stop-color="#7665ef"/><stop offset="1" stop-color="#211546"/></linearGradient><linearGradient id="elyMagicEdge"><stop stop-color="#fff4c2"/><stop offset=".5" stop-color="#a7a0ff"/><stop offset="1" stop-color="#54f1ed"/></linearGradient><filter id="elyAura"><feGaussianBlur stdDeviation="6"/></filter></defs>'+
-    '<ellipse cx="110" cy="151" rx="80" ry="12" fill="#000" opacity=".4"/><path d="M110 84Q72 24 16 36L34 119Q57 147 103 128L110 111 117 128Q163 147 186 119L204 36Q148 24 110 84Z" fill="#7255f6" opacity=".65" filter="url(#elyAura)"/><path d="M108 87Q73 29 20 38L37 112Q53 138 101 125L110 109Z" fill="url(#elyMagic)" stroke="url(#elyMagicEdge)" stroke-width="4" stroke-linejoin="round"/><path d="M112 87Q147 29 200 38L183 112Q167 138 119 125L110 109Z" fill="url(#elyMagic)" stroke="url(#elyMagicEdge)" stroke-width="4" stroke-linejoin="round"/>'+
-    '<path d="M25 47 54 58 74 114 44 105Z M195 47 166 58 146 114 176 105Z" fill="#bafff4" opacity=".55"/><path d="M38 45 68 59 88 119 M182 45 152 59 132 119" stroke="#f4ffff" stroke-width="3" fill="none"/><path d="M49 87 88 118 M171 87 132 118 M70 59 101 96 M150 59 119 96" stroke="#39256f" stroke-width="5" stroke-linecap="round"/><path d="M110 76 96 91 102 133 110 142 118 133 124 91Z" fill="#a99cff" stroke="#fff1c8" stroke-width="3"/><path d="M110 83V135" stroke="#5147a5" stroke-width="3"/><g fill="#efffff"><path d="M28 18l5 12 12 5-12 5-5 12-5-12-12-5 12-5Z"/><path d="M187 17l4 9 9 4-9 4-4 9-4-9-9-4 9-4Z"/></g><g fill="#ffe6a0"><path d="M64 20l3 7 7 3-7 3-3 7-3-7-7-3 7-3Z"/><circle cx="195" cy="125" r="3"/><circle cx="25" cy="131" r="2.5"/></g></svg>';
+    '<rect x="20" y="18" width="88" height="14" fill="#6f747b"/><rect x="14" y="25" width="100" height="8" fill="#3b3f44"/>'+
+    '<rect x="20" y="32" width="12" height="72" fill="#565b61"/><rect x="96" y="32" width="12" height="72" fill="#565b61"/>'+
+    '<rect x="32" y="38" width="8" height="60" fill="#a6abb0"/><rect x="52" y="38" width="8" height="60" fill="#8f9499"/><rect x="72" y="38" width="8" height="60" fill="#8f9499"/><rect x="88" y="38" width="8" height="60" fill="#a6abb0"/>'+
+    '<rect x="28" y="96" width="72" height="12" fill="#33373c"/><rect x="36" y="104" width="56" height="8" fill="#1f2226"/>'+
+    '<rect x="49" y="53" width="30" height="30" fill="#c8cdd1"/><rect x="45" y="61" width="8" height="16" fill="#b4b9bd"/><rect x="75" y="61" width="8" height="16" fill="#b4b9bd"/>'+
+    '<rect x="54" y="61" width="8" height="8" fill="#25292d"/><rect x="66" y="61" width="8" height="8" fill="#25292d"/><rect x="58" y="73" width="16" height="6" fill="#555b61"/>'+
+    '<rect x="58" y="35" width="8" height="10" fill="#ff8a24"/><rect x="52" y="40" width="8" height="8" fill="#ffb13b"/><rect x="66" y="40" width="8" height="8" fill="#ff6b1a"/>'+
+    '<rect x="10" y="15" width="8" height="8" fill="#d9dde1"/><rect x="110" y="12" width="6" height="6" fill="#d9dde1"/>'+
+    '<rect x="14" y="108" width="100" height="5" fill="#101216"/><rect x="22" y="113" width="84" height="4" fill="#000" opacity=".45"/></svg>';
+  if(symbol==="ELYTRA" || symbol==="ELYTRA_ENCH"){
+    const ench=symbol==="ELYTRA_ENCH";
+    const wing=ench ? "#6b4bd6" : "#7b6f63", wing2=ench ? "#a98cff" : "#b7a88e", edge=ench ? "#4a2e9b" : "#4b433b";
+    return open+
+      (ench?'<rect x="18" y="28" width="6" height="6" fill="#d7c7ff"/><rect x="103" y="22" width="5" height="5" fill="#74fff2"/><rect x="109" y="75" width="6" height="6" fill="#d7c7ff"/>':"")+
+      '<path d="M61 43 48 25 25 22 10 31 20 91 35 105 56 98 64 78Z" fill="'+wing+'" stroke="'+edge+'" stroke-width="5"/>'+
+      '<path d="M67 43 80 25 103 22 118 31 108 91 93 105 72 98 64 78Z" fill="'+wing+'" stroke="'+edge+'" stroke-width="5"/>'+
+      '<path d="M60 43 52 35 29 30 18 36 26 80 38 94 54 88 62 73Z" fill="'+wing2+'"/>'+
+      '<path d="M68 43 76 35 99 30 110 36 102 80 90 94 74 88 66 73Z" fill="'+wing2+'"/>'+
+      '<path d="M64 36 56 49 59 89 64 100 69 89 72 49Z" fill="'+(ench?"#b5a4ff":"#8d7d69")+'" stroke="'+(ench?"#e8dcff":"#d5c7ae")+'" stroke-width="4"/>'+
+      '<path d="M24 38 43 48 54 77M104 38 85 48 74 77" fill="none" stroke="'+(ench?"#d8c9ff":"#ddd0ba")+'" stroke-width="4"/>'+
+      (ench?'<rect x="31" y="56" width="5" height="5" fill="#fff"/><rect x="91" y="48" width="5" height="5" fill="#75fff0"/><rect x="22" y="72" width="4" height="4" fill="#cdbdff"/>':"")+
+      '<rect x="14" y="88" width="6" height="6" fill="'+edge+'"/><rect x="108" y="88" width="6" height="6" fill="'+edge+'"/></svg>';
+  }
   if(symbol==="EGAPPLE")return open+
-    '<defs><linearGradient id="appleGold" x1="0" y1="0" x2="1" y2="1"><stop stop-color="#fff9b6"/><stop offset=".22" stop-color="#ffe05b"/><stop offset=".55" stop-color="#d99218"/><stop offset=".83" stop-color="#a95413"/><stop offset="1" stop-color="#512810"/></linearGradient><linearGradient id="appleLeaf"><stop stop-color="#d6ff99"/><stop offset=".5" stop-color="#59c55c"/><stop offset="1" stop-color="#1d653b"/></linearGradient><filter id="appleAura"><feGaussianBlur stdDeviation="7"/></filter></defs>'+
-    '<ellipse cx="110" cy="157" rx="57" ry="12" fill="#000" opacity=".4"/><path d="M107 53Q75 28 43 60Q17 88 38 137Q59 178 96 154Q110 145 124 154Q161 178 182 137Q203 88 176 60Q144 28 113 53Z" fill="#ffcf3d" opacity=".4" filter="url(#appleAura)"/><path d="M108 57Q78 35 53 58L33 86 43 134 72 157 99 151 111 143 125 151 152 157 180 134 189 86 167 58Q142 35 112 57Z" fill="url(#appleGold)" stroke="#fff09b" stroke-width="4" stroke-linejoin="round"/>'+
-    '<path d="M105 57Q112 34 128 22" fill="none" stroke="#76502a" stroke-width="9" stroke-linecap="round"/><path d="M121 35Q143 7 174 19Q160 47 127 48Z" fill="url(#appleLeaf)" stroke="#d5ffa0" stroke-width="3"/><path d="M130 42 160 23" stroke="#eaffc0" stroke-width="2"/><path d="M52 78 73 63 92 68 78 92 56 104Z" fill="#fff7c9" opacity=".8"/><path d="M49 111 59 137 79 146" fill="none" stroke="#fff1a0" stroke-width="5" opacity=".7"/><path d="M134 68 159 60 176 78" fill="none" stroke="#9f5011" stroke-width="5" opacity=".6"/><g fill="#fff5b7"><path d="M28 30l5 12 12 5-12 5-5 12-5-12-12-5 12-5Z"/><path d="M190 43l4 9 9 4-9 4-4 9-4-9-9-4 9-4Z"/><circle cx="190" cy="133" r="3"/><circle cx="29" cy="123" r="2.5"/></g></svg>';
-  return open+'<circle cx="110" cy="95" r="48" fill="#252d38" stroke="#ff5365" stroke-width="5"/><path d="M85 95h50M110 70v50" stroke="#fff" stroke-width="7" stroke-linecap="round"/></svg>';
+    '<rect x="51" y="18" width="9" height="13" fill="#6b4a24"/><rect x="59" y="13" width="18" height="8" fill="#4d8a2c"/><rect x="72" y="18" width="12" height="8" fill="#6dbd3c"/>'+
+    '<rect x="42" y="30" width="44" height="9" fill="#ffd94d"/><rect x="31" y="39" width="66" height="10" fill="#f2bd25"/><rect x="24" y="49" width="80" height="30" fill="#e9aa18"/><rect x="31" y="79" width="66" height="18" fill="#d8910e"/><rect x="42" y="97" width="44" height="10" fill="#b8730b"/>'+
+    '<rect x="31" y="47" width="17" height="18" fill="#ffe36a"/><rect x="40" y="39" width="17" height="10" fill="#fff08b"/><rect x="48" y="66" width="14" height="8" fill="#f6c32b"/>'+
+    '<rect x="97" y="53" width="8" height="8" fill="#a86b08"/><rect x="24" y="64" width="8" height="10" fill="#c77f0c"/>'+
+    '<rect x="14" y="29" width="6" height="6" fill="#fff1a1"/><rect x="103" y="38" width="5" height="5" fill="#fff1a1"/><rect x="18" y="88" width="5" height="5" fill="#ffd84d"/></svg>';
+  return open+'<rect x="24" y="24" width="80" height="80" fill="#4a4f55"/><rect x="32" y="32" width="64" height="64" fill="#777e85"/><rect x="44" y="44" width="40" height="40" fill="#9aa1a7"/></svg>';
 }
 
 async function renderMarket() {
