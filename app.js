@@ -40,6 +40,7 @@ const dateTime = (value) => value ? new Date(value).toLocaleString("de-DE") : "�
 let currentUser = null;
 let profile = null;
 let permissions = [];
+let currentRoles = [];
 let currentRoute = "home";
 let activeChatChannel = null;
 let chatPollTimer = null;
@@ -78,6 +79,8 @@ function go(route) {
 function openDrawer() { $("drawer")?.classList.add("open"); }
 function closeDrawer() { $("drawer")?.classList.remove("open"); }
 function isAdmin() { return currentUser?.id === "cee3680c-3580-47c5-8c64-0277eac03800" || permissions.includes("users.view") || permissions.includes("roles.manage"); }
+function roleBadge(roleName){const map={admin:"ADMIN",moderator:"MOD",helper:"HELPER",media:"MEDIA",verified:"VERIFIED"};const key=String(roleName||"").toLowerCase();return map[key]?'<span class="role-aura role-'+key+'" title="'+map[key]+'"><i></i></span>':"";}
+function roleBadges(roles){return (roles||[]).map(r=>roleBadge(r?.name||r)).join("");}
 function badge(verified) { return verified ? '<span class="verified" title="Minecraft verifiziert">✓</span>' : ""; }
 async function list(table, select="*") {
   const { data, error } = await db.from(table).select(select);
@@ -118,18 +121,20 @@ async function authFunction(payload) {
 }
 async function refreshAuth() {
   const { data:{session} } = await db.auth.getSession();
-  currentUser = null; profile = null; permissions = [];
+  currentUser = null; profile = null; permissions = []; currentRoles = [];
   if (!session) return;
   const { data:{user},error:userError } = await db.auth.getUser();
   if (userError || !user) return;
   currentUser = user;
-  const [{data:profileData,error:profileError},{data:permissionData}] = await Promise.all([
+  const [{data:profileData,error:profileError},{data:permissionData},{data:roleData}] = await Promise.all([
     db.from("profiles").select("id,username,display_name,avatar_url,verified,created_at").eq("id",user.id).maybeSingle(),
-    db.rpc("my_permissions")
+    db.rpc("my_permissions"),
+    db.from("user_roles").select("roles(name,display_name,priority)").eq("user_id",user.id)
   ]);
   if (profileError) throw profileError;
   profile = profileData;
   permissions = permissionData ?? [];
+  currentRoles = (roleData ?? []).map(r=>r.roles).filter(Boolean);
   const { data:ban } = await db.from("bans").select("id,reason,expires_at")
     .eq("user_id",user.id).eq("active",true).order("starts_at",{ascending:false}).limit(1).maybeSingle();
   if (ban && (!ban.expires_at || new Date(ban.expires_at)>new Date())) {
@@ -299,17 +304,19 @@ async function renderChat() {
   const rows=(messages.data??[]).reverse();
   const ids=[...new Set(rows.map(m=>m.user_id).filter(Boolean))];
   let profilesById=new Map();
+  let rolesById=new Map();
   if(ids.length){
-    const {data:profilesData,error:profilesError}=await db.from("profiles")
-      .select("id,username,display_name,verified").in("id",ids);
+    const {data:profilesData,error:profilesError}=await db.from("profiles").select("id,username,display_name,verified").in("id",ids);
+    const {data:roleRows}=await db.from("user_roles").select("user_id,roles(name,display_name,priority)").in("user_id",ids);
+    (roleRows??[]).forEach(r=>{if(!rolesById.has(r.user_id))rolesById.set(r.user_id,[]);if(r.roles)rolesById.get(r.user_id).push(r.roles);});
     if(profilesError) console.warn("Chat profile lookup failed:",profilesError.message);
-    profilesById=new Map((profilesData??[]).map(p=>[p.id,p]));
+    profilesById=new Map((profilesData??[]).map(p=>[p.id,{...p,roles:rolesById.get(p.id)||[]}]));
   }
   lastChatMessages=rows.map(m=>({...m,profiles:profilesById.get(m.user_id)||null}));
   const items=lastChatMessages.map(m=>`
     <article class="chat-message">
-      <div><span class="who">${esc(m.profiles?.display_name||m.profiles?.username||"Player")}${badge(m.profiles?.verified)}</span><span class="when">${dateTime(m.created_at)}</span>
-      ${currentUser && currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':""}</div>
+      <div><span class="who">${esc(m.profiles?.display_name||m.profiles?.username||"Player")}${roleBadges(m.profiles?.roles)}${badge(m.profiles?.verified)}</span><span class="when">${dateTime(m.created_at)}</span>
+      ${currentUser && currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':""}${isAdmin()?'<button class="btn ghost small danger" data-chat-delete="'+m.id+'">Löschen</button><button class="btn ghost small" data-chat-mute="'+m.user_id+'">Timeout</button><button class="btn ghost small danger" data-chat-ban="'+m.user_id+'">Sperren</button>':""}</div>
       <p>${esc(m.message)}</p>
     </article>
   `).join("");
@@ -360,7 +367,7 @@ async function renderLeaderboards() {
 
     const body=rows.map((p,i)=>{
       const player=esc(p.profiles?.display_name||p.profiles?.username||"Player");
-      const admin=p.user_id==="cee3680c-3580-47c5-8c64-0277eac03800" ? '<span class="admin-badge" title="Administrator">ADMIN</span>' : "";
+      const admin=p.user_id==="cee3680c-3580-47c5-8c64-0277eac03800" ? roleBadge("admin") : "";
       return '<tr><td><span class="rank '+(i===0?"gold":i===1?"silver":i===2?"bronze":"")+'">'+(i+1)+'</span></td><td><strong>'+player+'</strong> '+badge(p.profiles?.verified)+' '+admin+'</td><td><strong>'+formatTime(p.bestTime)+'</strong></td><td>'+number(p.rounds)+'</td></tr>';
     }).join("");
 
@@ -638,6 +645,17 @@ function wireChat() {
     await loadChatMessages().catch(err=>console.error("Chat refresh failed",err));
   });
   $("chat-window")?.addEventListener("click",async event=>{
+    const mod=event.target.closest("[data-chat-delete],[data-chat-mute],[data-chat-ban]");
+    if(mod&&isAdmin()){
+      try{
+        if(mod.dataset.chatDelete){await callAdmin("delete_chat_message",{message_id:Number(mod.dataset.chatDelete)});toast("Nachricht gelöscht.","success");await loadChatMessages();return;}
+        const uid=mod.dataset.chatMute||mod.dataset.chatBan; const reason=prompt("Grund?","Moderation"); if(reason===null)return;
+        const hours=mod.dataset.chatMute?Number(prompt("Timeout in Stunden?","1")):0;
+        await callAdmin(mod.dataset.chatMute?"mute":"ban",{user_id:uid,reason,expires_at:hours>0?new Date(Date.now()+hours*3600000).toISOString():null});
+        toast(mod.dataset.chatMute?"Timeout gesetzt.":"Benutzer gesperrt.","success");await loadChatMessages();return;
+      }catch(error){toast(error.message||"Moderationsaktion fehlgeschlagen.","error");return;}
+    }
+
     const button=event.target.closest("[data-report]");if(!button||!currentUser)return;
     const reason=prompt("Warum möchtest du diese Nachricht melden?");if(!reason)return;
     const {error}=await db.from("chat_reports").insert({message_id:Number(button.dataset.report),reporter_user_id:currentUser.id,reason});
