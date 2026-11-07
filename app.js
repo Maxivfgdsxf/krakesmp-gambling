@@ -1005,7 +1005,7 @@ function wireAdminSection(section) {
         toast("Market-Ticket aktualisiert.","success");await loadAdminSection(section);
       }
       if(button.dataset.deleteMessage){
-        if(!confirm("Chat-Nachricht wirklich ausblenden?"))return;
+        button.disabled=true;
         await callAdmin("delete_chat_message",{message_id:Number(button.dataset.deleteMessage)});
         toast("Nachricht entfernt.","success");await loadAdminSection(section);
       }
