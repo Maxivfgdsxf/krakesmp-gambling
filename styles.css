@@ -340,3 +340,27 @@ body{background:
 .page-wrap{margin:0 30px;}
 .site-footer{margin-right:0;}
 @media(max-width:620px){.page-wrap{margin:0 12px;}}
+
+
+/* Final header layout: no search field; Kraken GUI button on the top-right */
+.topbar{
+  display:flex !important;
+  align-items:center;
+  gap:18px;
+  padding:0 28px;
+}
+.topbar .brand{order:1;}
+.topbar .global-search{display:none !important;}
+.topbar .top-actions{
+  order:3;
+  margin-left:auto;
+  justify-self:auto;
+}
+.topbar .kraken-menu-btn{
+  order:4;
+  flex:0 0 auto;
+}
+@media(max-width:620px){
+  .topbar{padding:0 12px;gap:8px;}
+  .topbar .account-chip{max-width:95px;}
+}
