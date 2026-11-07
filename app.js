@@ -235,7 +235,7 @@ async function renderHome() {
   const leaderHtml=topRP.map((p,i)=>'<div class="leader-row"><span class="leader-rank">'+(i+1)+'</span><span class="leader-avatar">♟</span><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong><span>'+number(p.totalRP)+' RP</span></div>').join("");
   const chatHtml=(chats.data??[]).map(m=>'<div class="home-chat-row"><strong>'+esc(m.profiles?.display_name||m.profiles?.username||"Player")+'</strong><span>'+dateTime(m.created_at)+'</span><p>'+esc(m.message)+'</p></div>').join("");
   const marketHtml=(marketItems.data??[]).map(m=>'<div class="market-mini-row"><span class="market-mini-icon">◆</span><div><strong>'+esc(m.name)+'</strong><small>'+esc(m.symbol)+'</small></div></div>').join("");
-  return pageHead("COMMUNITY","Willkommen bei KRAKE SMP","Deine Community-Zentrale für Chat, Minigames, Rankings, Events und Ingame-Services.")+
+  return pageHead("COMMUNITY","Startseite","Deine Community-Zentrale für Chat, Minigames, Rankings, Events und Ingame-Services.")+
     '<section class="home-hero"><div class="hero-copy"><div class="hero-welcome">Willkommen auf</div><h1><span class="red-word">KRAKE</span> <span class="metal-word">SMP</span></h1>'+
     '<p class="home-tagline">Deine Community. Dein <strong>SMP.</strong> Deine Welt.</p><p class="home-description">Ein Ort für deine Crew: Community-Chat, Minigames, Rankings, Events und Services – alles vereint in deinem KRAKE SMP Portal.</p>'+
     '<div class="action-row"><button class="btn" data-route="chat">Community öffnen <span>→</span></button><button class="btn secondary" data-route="leaderboards">Rankings ansehen</button></div>'+
