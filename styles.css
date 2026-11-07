@@ -638,3 +638,11 @@ body{background:radial-gradient(circle at 50% -12%,#3a0915 0,#14070c 30%,#080609
 .brand .brand-name,
 .brand .smp,
 .brand-logo + span{color:#ff243f!important;text-shadow:0 0 18px #ff243f55!important}
+
+/* KRAKEN GUI FINAL POSITION + CLICK FIX */
+.topbar{display:flex!important;align-items:center!important;justify-content:flex-start!important}
+.topbar .brand{order:1!important}
+.topbar .kraken-menu-btn{order:2!important;margin-left:auto!important;margin-right:0!important;flex:0 0 56px!important;width:56px!important;height:56px!important;position:relative!important;z-index:200!important;pointer-events:auto!important}
+.drawer{position:fixed!important;inset:0!important;z-index:1000!important}
+.drawer-panel{z-index:1002!important}
+.drawer-backdrop{z-index:1001!important}
