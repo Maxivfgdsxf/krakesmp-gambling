@@ -8,6 +8,13 @@ const esc = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({
   "&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"
 }[c]));
 const number = (value) => Number(value ?? 0).toLocaleString("de-DE");
+const KRAKEN_CREST = `<svg class="kraken-crest" viewBox="0 0 120 120" role="img" aria-label="KRAKE SMP Kraken-Wappen">
+  <path d="M30 31 21 10 42 20 60 5 78 20 99 10 90 32" fill="none" stroke="#ff6977" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
+  <path d="M33 43 Q60 29 87 43 L84 62 Q81 82 60 88 Q39 82 36 62Z" fill="#e42336" fill-opacity=".16" stroke="#ff5365" stroke-width="3"/>
+  <path d="M45 56 Q50 50 55 56 M65 56 Q70 50 75 56" fill="none" stroke="#fff" stroke-width="4" stroke-linecap="round"/>
+  <path d="M42 77 C27 81 16 91 19 103 C22 114 35 112 40 101 M54 85 C45 97 47 111 58 114 C66 116 71 109 68 100 M78 77 C93 81 104 91 101 103 C98 114 85 112 80 101" fill="none" stroke="#ff5365" stroke-width="5" stroke-linecap="round"/>
+  <path d="M60 86 C63 94 63 100 59 105" fill="none" stroke="#e9b8be" stroke-width="3" stroke-linecap="round"/>
+</svg>`;
 const dateTime = (value) => value ? new Date(value).toLocaleString("de-DE") : "—";
 
 let currentUser = null;
@@ -103,7 +110,7 @@ function shell(content) {
   root.innerHTML = `
     <header class="topbar">
       <button class="icon-btn" id="menu-open" aria-label="Menü öffnen">☰</button>
-      <a class="brand" href="#home"><span class="brand-logo">♛</span><span>KRAKE SMP</span></a>
+      <a class="brand" href="#home"><span class="brand-logo" aria-hidden="true">${KRAKEN_CREST}</span><span>KRAKE SMP</span></a>
       <div class="top-actions">
         <span class="account-chip">${esc(display)}</span>
         <button class="icon-btn" id="account-open" aria-label="Profil öffnen">◎</button>
@@ -167,16 +174,10 @@ async function renderHome() {
       </div>
       <aside class="panel hero-panel">
         <div class="status-line"><span class="status-dot"></span> PORTAL BEREIT</div>
-        <div class="crest-orb"><span>♛</span></div>
+        <div class="crest-orb">${KRAKEN_CREST}</div>
         <div class="panel-footer"><span>🛡 KRAKE SMP</span><span class="pill red">COMMUNITY HUB</span></div>
         <p class="form-note">Der Live-Status des Minecraft-Servers wird verbunden, sobald die Server-API bereitsteht.</p>
       </aside>
-    </section>
-    <section class="section grid four">
-      <div class="card stat-card"><div class="stat-label">Deine Games</div><div class="stat-number">${number(stats.data?.games_played)}</div><div class="form-note">gespielte Challenges</div></div>
-      <div class="card stat-card"><div class="stat-label">Deine Wins</div><div class="stat-number">${number(stats.data?.wins)}</div><div class="form-note">gewonnene Spiele</div></div>
-      <div class="card stat-card"><div class="stat-label">Rating</div><div class="stat-number">${number(stats.data?.rating ?? (currentUser?1000:"—"))}</div><div class="form-note">Community-Rating</div></div>
-      <div class="card stat-card"><div class="stat-label">Account</div><div class="stat-number">${currentUser?"Aktiv":"Gast"}</div><div class="form-note">${profile?.verified?"Minecraft verifiziert":"Minecraft nicht verifiziert"}</div></div>
     </section>
     <section class="section grid two">
       <div class="card"><div class="section-head"><div><div class="eyebrow">SEASONAL</div><h2>Aktuelles Event</h2></div><span class="pill ${event?"red":""}">${event?"LIVE":"YEAR ROUND"}</span></div>
