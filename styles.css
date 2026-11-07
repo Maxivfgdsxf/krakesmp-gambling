@@ -736,3 +736,7 @@ body{background:radial-gradient(circle at 50% -12%,#3a0915 0,#14070c 30%,#080609
   .topbar{padding-left:12px!important;padding-right:12px!important}
   .topbar #kraken-menu{flex-basis:50px!important;width:50px!important;height:50px!important}
 }
+
+/* Keep only the SMP letters red; brand word remains white */
+.brand span.brand-word{color:#fff!important;text-shadow:0 0 14px #ff000033!important}
+.brand span.brand-word .brand-smp{color:#ff0000!important;text-shadow:0 0 18px #ff0000aa!important}
