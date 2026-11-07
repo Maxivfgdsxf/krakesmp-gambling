@@ -27,7 +27,7 @@ const parsePrice = (value) => {
   const mult = m[2]==="b" ? 1000000000 : m[2]==="m" ? 1000000 : m[2]==="k" ? 1000 : 1;
   return Math.round(Number(m[1]) * mult);
 };
-const adminMark = () => isAdmin() ? '<span class="admin-badge" title="Administrator">ADMIN</span>' : "";
+const adminMark = () => isAdmin() ? '<span class="admin-aura" aria-label="Admin" title="Admin"><i></i></span>' : "";
 const KRAKEN_CREST = `<svg class="kraken-crest" viewBox="0 0 120 120" role="img" aria-label="KRAKE SMP Kraken-Wappen">
   <path d="M30 31 21 10 42 20 60 5 78 20 99 10 90 32" fill="none" stroke="#ff6977" stroke-width="5" stroke-linecap="round" stroke-linejoin="round"/>
   <path d="M33 43 Q60 29 87 43 L84 62 Q81 82 60 88 Q39 82 36 62Z" fill="#e42336" fill-opacity=".16" stroke="#ff5365" stroke-width="3"/>
