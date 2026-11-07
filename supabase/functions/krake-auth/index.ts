@@ -23,11 +23,10 @@ const admin = createClient(url, serviceKey, { auth: { persistSession: false, aut
 const publicAuth = createClient(url, anonKey, { auth: { persistSession: false, autoRefreshToken: false } });
 
 function validPassword(password: string) {
-  return password.length >= 12 &&
+  return /^[A-Za-z0-9]{12,}$/.test(password) &&
     /[a-z]/.test(password) &&
     /[A-Z]/.test(password) &&
-    /\d/.test(password) &&
-    /[^A-Za-z0-9]/.test(password);
+    /\d/.test(password);
 }
 async function sha256(value: string) {
   const bytes = new TextEncoder().encode(value);
@@ -79,12 +78,12 @@ Deno.serve(async (req: Request) => {
     const username = String(body.username ?? "").trim().toLowerCase();
 
     if (action === "signup") {
-      if (!/^[a-z0-9_]{3,20}$/.test(username)) {
-        return json({ error: "Der Benutzername muss 3–20 Zeichen lang sein (Buchstaben, Zahlen, _)." }, 400);
+      if (!/^[a-z0-9]{3,20}$/.test(username)) {
+        return json({ error: "Der Benutzername muss 3–20 Zeichen lang sein und darf nur Buchstaben und Zahlen enthalten." }, 400);
       }
       const password = String(body.password ?? "");
       if (!validPassword(password)) {
-        return json({ error: "Das Passwort benötigt mindestens 12 Zeichen sowie Groß-/Kleinbuchstaben, Zahl und Sonderzeichen." }, 400);
+        return json({ error: "Das Passwort muss mindestens 12 Zeichen lang sein und Groß-/Kleinbuchstaben sowie Zahlen enthalten. Sonderzeichen sind nicht erlaubt." }, 400);
       }
       if (!await rateLimit(req, username, "signup", 3, 60)) {
         return json({ error: "Zu viele Registrierungsversuche. Bitte später erneut versuchen." }, 429);
