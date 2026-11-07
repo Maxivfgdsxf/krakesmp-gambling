@@ -22,7 +22,12 @@ const marketIcon=(s)=>{
   return s.source_type==="player"?"🧑‍🌾":"🧱";
 };
 async function renderEconomy(){
- if(!currentUser)return pageHead("KRAKE ECONOMY","KRAKE Börse","Melde dich an, um KC zu verdienen und Aktien zu handeln.")+'<section class="card"><p class="muted">Dein KRAKE-Konto schaltet die Börse frei.</p><button class="btn" data-route="login">Anmelden</button></section>';
+ if(!currentUser){
+   const publicLeaderboard=await call("economy_leaderboard");
+   const rows=(publicLeaderboard||[]).map((p,i)=>'<div class="eco-leader-row"><b>#'+(i+1)+'</b><strong>'+esc(p.display_name||p.username||"Spieler")+'</strong><span>'+money(p.balance)+'</span></div>').join("");
+   return pageHead("KRAKE RANGLISTE","KRAKE Wirtschaft","Die öffentliche Top-10-KC-Rangliste.")+
+     '<section class="eco-panel card"><div class="section-head"><div><span class="eyebrow">TOP 10</span><h2>KC-Rangliste</h2><p class="muted">Die Rangliste ist öffentlich sichtbar. Für Börse, Handel und dein Portfolio kannst du dich anmelden.</p></div><button class="btn" data-route="login">Anmelden</button></div><div class="eco-leaderboard">'+rows+'</div></section>';
+ }
  await call("economy_market_tick");
  const jobs=[
  db.from("user_balances").select("balance").eq("user_id",currentUser.id).maybeSingle(),
