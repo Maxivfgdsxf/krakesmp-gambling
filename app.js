@@ -353,7 +353,7 @@ function buildLeaderboardGroups(games,results){
   }
   const rpByUser=new Map();
   for(const game of games??[]){
-    const players=[...(groups.get(game.id)||new Map()).values()].sort((a,b)=>leaderboardSort(a,b,game.slug));
+    const players=[...(groups.get(game.id)||new Map()).values()].sort((a,b)=>leaderboardSort(a,b,game.slug)).slice(0,25);
     let previous=null,previousRank=0;
     players.forEach((player,index)=>{
       const tied=previous&&sameLeaderboardPerformance(player,previous,game.slug);
