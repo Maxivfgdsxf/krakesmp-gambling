@@ -740,3 +740,61 @@ body{background:radial-gradient(circle at 50% -12%,#3a0915 0,#14070c 30%,#080609
 /* Keep only the SMP letters red; brand word remains white */
 .brand span.brand-word{color:#fff!important;text-shadow:0 0 14px #ff000033!important}
 .brand span.brand-word .brand-smp{color:#ff0000!important;text-shadow:0 0 18px #ff0000aa!important}
+
+
+/* Clean, consistent brand colours */
+.topbar .brand .brand-word,
+.topbar .brand .brand-smp{
+  color:#fff!important;
+  -webkit-text-fill-color:#fff!important;
+  background:none!important;
+  text-shadow:none!important;
+}
+.home-hero h1 .red-word,
+.home-hero h1 .metal-word{
+  color:#ff3f58!important;
+  background:none!important;
+  background-image:none!important;
+  -webkit-text-fill-color:#ff3f58!important;
+  text-shadow:0 0 35px #ef183e88!important;
+}
+
+/* Cleaner spacing and legibility */
+.home-hero{gap:22px}
+.home-dashboard-grid{gap:16px;align-items:stretch}
+.home-dashboard-grid>.card{min-width:0;padding:20px;border-radius:18px}
+.home-card-head{align-items:center;gap:12px;margin-bottom:15px}
+.home-card-head h2{line-height:1.2}
+.home-chat-row,.leader-row,.market-mini-row{min-width:0}
+.leader-row{grid-template-columns:26px 30px minmax(0,1fr) auto;gap:8px}
+.leader-row strong{overflow-wrap:anywhere}
+.leader-row>span:last-child{font-size:12px;white-space:nowrap}
+.chat-window{display:flex;flex-direction:column;gap:9px}
+.chat-message{padding:13px 15px;border-radius:14px}
+.chat-message-head{display:flex;align-items:center;flex-wrap:wrap;gap:7px 10px;min-width:0}
+.chat-message-head .who{display:inline-flex;align-items:center;gap:5px}
+.chat-message-head .when{margin-left:0;white-space:nowrap}
+.chat-actions{display:flex;align-items:center;flex-wrap:wrap;gap:6px;margin:0 0 0 auto}
+.chat-actions .btn{min-width:0;min-height:0;margin:0;padding:5px 9px;font-size:11px;line-height:1.2}
+.chat-message p{margin:8px 0 0;line-height:1.55}
+.leaderboard-global,.leaderboard-shell{margin-bottom:16px}
+.leaderboard-tabs{display:flex;flex-wrap:wrap;gap:8px;margin-bottom:14px}
+.leaderboard-tab{flex:0 1 auto;min-width:0;min-height:40px;padding:9px 13px;font-size:12px;border-radius:10px}
+.leaderboard-game[hidden]{display:none!important}
+.leaderboard-game .section-head{align-items:center;gap:12px}
+.leaderboard-game .table-wrap,.leaderboard-global .table-wrap{overflow-x:auto}
+.leaderboard-game table,.leaderboard-global table{min-width:560px}
+@media(max-width:760px){
+  .home-hero{padding-left:20px;padding-right:20px}
+  .home-dashboard-grid{grid-template-columns:1fr}
+  .home-dashboard-grid>.card{grid-column:1;grid-row:auto}
+  .chat-actions{margin-left:0;width:100%}
+  .chat-actions .btn{padding:6px 9px}
+  .leaderboard-game .section-head{align-items:flex-start}
+}
+@media(max-width:480px){
+  .home-hero{padding:22px 14px 110px}
+  .home-hero h1{gap:9px;font-size:clamp(43px,12vw,56px)}
+  .home-dashboard-grid>.card{padding:16px}
+  .leaderboard-tab{flex:1 1 auto}
+}
