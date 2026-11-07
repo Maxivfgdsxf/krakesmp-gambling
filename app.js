@@ -89,6 +89,7 @@ function roleBadge(roleName){
   const map={admin:"ADMIN",moderator:"MOD",helper:"HELPER",media:"MEDIA",verified:"VERIFIED"};
   const key=String(roleName||"").toLowerCase();
   if(!map[key])return "";
+  if(key==="admin")return '<span class="role-aura role-admin admin-shield-badge" tabindex="0" role="img" aria-label="ADMIN"><svg class="admin-shield-icon" viewBox="0 0 32 36" aria-hidden="true"><path d="M16 1 29 6v10c0 8.5-5.2 15.6-13 18C8.2 31.6 3 24.5 3 16V6z" fill="#ff203f"/><path d="M16 5 25 8v8c0 6.2-3.5 11.6-9 14-5.5-2.4-9-7.8-9-14V8z" fill="#d90f2d"/></svg><span class="role-tooltip">ADMIN</span></span>';
   return '<span class="role-aura role-'+key+'" tabindex="0" role="img" aria-label="'+map[key]+'"><i></i><span class="role-tooltip">'+map[key]+'</span></span>';
 }
 function roleBadges(roles){return (roles||[]).map(r=>roleBadge(r?.name||r)).join("");}
@@ -105,6 +106,17 @@ function wireRoleAuraToggles(){
   });
 }
 function badge(verified) { return verified ? '<span class="verified" title="Minecraft verifiziert">✓</span>' : ""; }
+function looksAiGenerated(text){
+  const t=String(text||"").trim();
+  if(t.length<80)return false;
+  let score=0;
+  if(/\b(als ki|als künstliche intelligenz|ich kann dir dabei|ich helfe dir gerne|zusammenfassend|abschließend|natürlich!|gerne helfe ich)\b/i.test(t))score+=3;
+  if(/\b(zunächst|darüber hinaus|allerdings|folglich|somit|abschließend|insgesamt)\b/gi.test(t))score+=1;
+  if(t.length>260)score+=1;
+  if((t.match(/[.!?]/g)||[]).length>=5 && (t.match(/,/g)||[]).length>=3)score+=1;
+  if(!/[😂🤣😭💀❤️🔥]/u.test(t) && /\b(du|dein|euch|ihr)\b/i.test(t) && t.split(/\s+/).length>70)score+=1;
+  return score>=2;
+}
 async function list(table, select="*") {
   const { data, error } = await db.from(table).select(select);
   if (error) throw error;
@@ -241,7 +253,7 @@ async function renderHome() {
   const [events,announcements,chats,marketItems]=await Promise.all([
     db.from("events").select("name,description,starts_at,ends_at").eq("active",true).limit(1),
     db.from("announcements").select("title,message,created_at").eq("active",true).order("created_at",{ascending:false}).limit(2),
-    db.from("chat_messages").select("id,user_id,message,created_at,profiles(username,display_name,verified)").is("deleted_at",null).order("created_at",{ascending:false}).limit(3),
+    db.from("chat_messages").select("id,user_id,message,created_at,profiles:profiles!chat_messages_user_id_fkey(username,display_name,verified)").is("deleted_at",null).order("created_at",{ascending:false}).limit(3),
     db.from("market_items").select("id,symbol,name").eq("active",true).order("symbol").limit(3)
   ]);
   for(const result of [events,announcements,chats,marketItems])if(result?.error)console.warn("Home section:",result.error.message);
@@ -256,7 +268,7 @@ async function renderHome() {
   return pageHead("COMMUNITY","Startseite","Deine Community-Zentrale für Chat, Minigames, Rankings, Events und Ingame-Services.")+
     '<section class="home-hero"><div class="hero-copy"><div class="hero-welcome">Willkommen auf</div><h1><span class="red-word">KRAKE</span> <span class="metal-word">SMP</span></h1>'+
     '<p class="home-tagline">Deine Community. Dein <strong>SMP.</strong> Deine Welt.</p><p class="home-description">Ein Ort für deine Crew: Community-Chat, Minigames, Rankings, Events und Services – alles vereint in deinem KRAKE SMP Portal.</p>'+
-    '<div class="action-row"><button class="btn" data-route="chat">Community öffnen <span>→</span></button><button class="btn secondary" data-route="leaderboards">Rankings ansehen</button></div>'+
+    '<div class="action-row"><button class="btn" data-route="chat">Community öffnen <span>→</span></button></div>'+
     (currentUser?'<p class="muted home-greeting">Willkommen zurück, <strong>'+esc(hello)+'</strong>.</p>':'<p class="muted home-greeting">Melde dich an und werde Teil der Community.</p>')+
     '</div><div class="hero-crest-panel"><div class="hero-crest-glow"></div>'+KRAKEN_CREST+'<div class="hero-crest-caption"><span class="status-dot"></span> KRAKE COMMUNITY HUB</div></div>'+
     '<div class="hero-quick-stats"><a href="#chat"><span class="quick-stat-icon">◉</span><strong>Community Chat</strong><small>Live-Unterhaltungen</small></a><a href="#minigames"><span class="quick-stat-icon">⚔</span><strong>Minigames</strong><small>Skill & Challenges</small></a><a href="#leaderboards"><span class="quick-stat-icon">♛</span><strong>Leaderboard</strong><small>Spieler-Rankings</small></a></div></section>'+
@@ -289,7 +301,8 @@ function chatMessageMarkup(m) {
   const name=m.profiles?.display_name||m.profiles?.username||"Player";
   const report=currentUser&&currentUser.id!==m.user_id?'<button type="button" class="btn ghost small" data-report="'+m.id+'">Melden</button>':"";
   const moderation=isAdmin()?'<button type="button" class="btn ghost small danger" data-chat-delete="'+m.id+'">Löschen</button><button type="button" class="btn ghost small" data-chat-mute="'+m.user_id+'">Timeout</button><button type="button" class="btn ghost small danger" data-chat-ban="'+m.user_id+'">Sperren</button>':"";
-  return '<article class="chat-message" data-message-id="'+m.id+'"><div class="chat-message-head"><span class="who">'+esc(name)+roleBadges(m.profiles?.roles)+badge(m.profiles?.verified)+'</span><span class="when">'+dateTime(m.created_at)+'</span><div class="chat-actions">'+report+moderation+'</div></div><p>'+esc(m.message)+'</p></article>';
+  const aiHint=isAdmin()&&looksAiGenerated(m.message)?'<div class="ai-detection-note">⚠ Möglicherweise KI-generierter Text</div>':"";
+  return '<article class="chat-message" data-message-id="'+m.id+'"><div class="chat-message-head"><span class="who">'+esc(name)+roleBadges(m.profiles?.roles)+badge(m.profiles?.verified)+'</span><span class="when">'+dateTime(m.created_at)+'</span><div class="chat-actions">'+report+moderation+'</div></div><p>'+esc(m.message)+'</p>'+aiHint+'</article>';
 }
 async function renderChat() {
   const {data:chatSetting,error:settingError}=await db.from("chat_settings").select("mode,slow_seconds").eq("id",1).maybeSingle();
@@ -312,7 +325,7 @@ async function renderChat() {
   const items=lastChatMessages.map(chatMessageMarkup).join("");
   const mode=chatSetting?.mode||"normal";
   const modeLabel=mode==="admin"?"Nur Admins":mode==="media"?"Media-Modus":mode==="slow"?"Slow Mode":"Normal";
-  const modeNotice='<div class="notice chat-mode-notice"><strong>Chat-Modus: '+modeLabel+'</strong>'+(mode==="slow"?' · '+number(chatSetting?.slow_seconds||5)+' Sekunden zwischen deinen Nachrichten':"")+'</div>';
+  const modeNotice='<div class="notice chat-mode-notice"><div><strong>Chat-Modus: '+modeLabel+'</strong>'+(mode==="slow"?' · '+number(chatSetting?.slow_seconds||5)+' Sekunden zwischen deinen Nachrichten':"")+'</div>'+(isAdmin()?'<div class="chat-mode-controls"><button type="button" class="btn small '+(mode==="normal"?"":"secondary")+'" data-public-chat-mode="normal">Normal</button><button type="button" class="btn small '+(mode==="slow"?"":"secondary")+'" data-public-chat-mode="slow">Slow</button><button type="button" class="btn small '+(mode==="media"?"":"secondary")+'" data-public-chat-mode="media">Media</button><button type="button" class="btn small '+(mode==="admin"?"danger":"secondary")+'" data-public-chat-mode="admin">Admins</button></div>':"")+'</div>';
   return pageHead("COMMUNITY","Globaler Chat","Schreib mit der KRAKE Community. Chat-Regeln gelten für alle Mitglieder.")+
     modeNotice+'<section class="card"><div class="chat-window" id="chat-window">'+(items||empty("Noch keine Nachrichten. Starte die Unterhaltung!"))+'</div>'+
     (currentUser?'<form id="chat-form" class="chat-compose"><input class="input" id="chat-input" maxlength="2000" placeholder="Nachricht schreiben …" required><button class="btn" type="submit">Senden</button></form>':'<div class="notice" style="margin-top:12px">Zum Schreiben bitte <button class="btn small" data-route="login">anmelden</button>.</div>')+
@@ -416,58 +429,34 @@ function globalLeaderboardRows(snapshot){
 }
 async function renderLeaderboards(){
   const snapshot=await fetchLeaderboardSnapshot(),{games,groups}=snapshot;
-  const globalRows=globalLeaderboardRows(snapshot).slice(0,25);
+  const globalRows=globalLeaderboardRows(snapshot).slice(0,10);
   const globalBody=globalRows.map((p,i)=>'<tr><td><span class="rank '+(i<3?["gold","silver","bronze"][i]:"")+'">'+(i+1)+'</span></td><td><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong> '+roleBadges(p.profiles?.roles)+' '+badge(p.profiles?.verified)+'</td><td><strong>'+number(p.totalRP)+' RP</strong></td></tr>').join("");
   const formatTime=ms=>ms===null||ms===undefined?"—":(Math.round(Number(ms))>=1000?(Number(ms)/1000).toFixed(2)+" s":Math.round(Number(ms))+" ms");
   const cards=games.map((game,index)=>{
     const timed=isTimedMinigame(game.slug);
-    const players=[...(groups.get(game.id)?.values()||[])].sort((a,b)=>leaderboardSort(a,b,game.slug)).slice(0,25);
-    const body=players.map(p=>'<tr><td><span class="rank '+(p.placement<=3?["gold","silver","bronze"][p.placement-1]:"")+'">'+p.placement+'</span></td><td><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong> '+roleBadges(p.profiles?.roles)+' '+badge(p.profiles?.verified)+'</td><td><strong>'+(timed?formatTime(p.bestTime):number(p.bestScore))+'</strong></td><td><strong>'+number(p.placementRP)+' RP</strong></td><td>'+number(p.rounds)+'</td></tr>').join("");
-    return '<section class="leaderboard-game card" data-board="'+esc(game.slug)+'" '+(index?"hidden":"")+'><div class="section-head"><div><div class="eyebrow">KRAKE COMPETITIVE</div><h2>'+esc(game.name)+' Leaderboard</h2><p>'+esc(game.description||"Spieler-Rankings")+'</p></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>Platz</th><th>Spieler</th><th>'+(timed?"Bestzeit":"Score")+'</th><th>RP</th><th>Spiele</th></tr></thead><tbody>'+(body||'<tr><td colspan="5">Noch keine Ergebnisse.</td></tr>')+'</tbody></table></div></section>';
+    const allPlayers=[...(groups.get(game.id)?.values()||[])].sort((a,b)=>leaderboardSort(a,b,game.slug));
+    const players=allPlayers.slice(0,10);
+    const own=currentUser?allPlayers.find(p=>p.user_id===currentUser.id):null;
+    const body=players.map(p=>'<tr><td><span class="rank '+(p.placement<=3?["gold","silver","bronze"][p.placement-1]:"")+'">'+p.placement+'</span></td><td><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong> '+roleBadges(p.profiles?.roles)+' '+badge(p.profiles?.verified)+'</td><td><strong>'+(timed?formatTime(p.bestTime):number(p.bestScore))+'</strong></td><td><strong>'+number(p.placementRP)+' RP</strong></td></tr>').join("");
+    const ownRow=own&&own.placement>10?'<div class="leaderboard-own-wrap"><div class="eyebrow">DEINE PLATZIERUNG</div><table class="leaderboard-own-table"><tbody><tr><td><span class="rank">'+own.placement+'</span></td><td><strong>'+esc(own.profiles?.display_name||own.profiles?.username||"Du")+'</strong> '+roleBadges(own.profiles?.roles)+' '+badge(own.profiles?.verified)+'</td><td><strong>'+(timed?formatTime(own.bestTime):number(own.bestScore))+'</strong></td><td><strong>'+number(own.placementRP)+' RP</strong></td></tr></tbody></table></div>':"";
+    return '<section class="leaderboard-game card" data-board="'+esc(game.slug)+'" '+(index?"hidden":"")+'><div class="section-head"><div><div class="eyebrow">LEADERBOARD</div><h2>'+esc(game.name)+' Leaderboard</h2><p>'+esc(game.description||"Spieler-Rankings")+'</p></div><span class="pill red">TOP 10</span></div><div class="table-wrap leaderboard-table-wrap"><table class="leaderboard-table"><thead><tr><th>Platz</th><th>Spieler</th><th>'+(timed?"Bestzeit":"Score")+'</th><th>RP</th></tr></thead><tbody>'+(body||'<tr><td colspan="4">Noch keine Ergebnisse.</td></tr>')+'</tbody></table></div>'+ownRow+'</section>';
   }).join("");
   const tabs=games.map((game,i)=>'<button type="button" class="leaderboard-tab '+(!i?"active":"")+'" data-leaderboard-game="'+esc(game.slug)+'">'+esc(game.name)+'</button>').join("");
-  return pageHead("COMPETITIVE","Leaderboards","Einheitliche Ranking Points aus deinen besten Platzierungen in allen aktiven Minigames.")+
-    '<section class="card leaderboard-global"><div class="section-head"><div><div class="eyebrow">RANKING POINTS</div><h2>Globales RP Ranking</h2></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>RP gesamt</th></tr></thead><tbody>'+(globalBody||'<tr><td colspan="3">Noch keine Platzierungen.</td></tr>')+'</tbody></table></div></section>'+
+  return pageHead("COMPETITIVE","Leaderboards","Top 10 pro Spiel – darunter siehst du deine eigene Platzierung.")+
+    '<section class="card leaderboard-global"><div class="section-head"><div><div class="eyebrow">LEADERBOARD</div><h2>Globales RP Ranking</h2></div><span class="pill red">TOP 10</span></div><div class="table-wrap leaderboard-table-wrap"><table class="leaderboard-table"><thead><tr><th>#</th><th>Spieler</th><th>RP gesamt</th></tr></thead><tbody>'+(globalBody||'<tr><td colspan="3">Noch keine Platzierungen.</td></tr>')+'</tbody></table></div></section>'+
     '<section class="card leaderboard-shell"><div class="leaderboard-tabs">'+tabs+'</div><div class="leaderboard-panels">'+cards+'</div></section>';
 }
 
 function marketItemArtwork(symbol){
-  const label = symbol==="SKELETON" ? "Skeleton-Spawner" :
-    symbol==="ELYTRA_ENCH" ? "Verzauberte Elytra" :
-    symbol==="ELYTRA" ? "Elytra" :
-    symbol==="EGAPPLE" ? "Verzauberter goldener Apfel" : "Minecraft Item";
-  const open='<svg class="market-item-svg minecraft-pixel-art" viewBox="0 0 128 128" role="img" aria-label="'+label+'" xmlns="http://www.w3.org/2000/svg" shape-rendering="crispEdges">';
-  if(symbol==="SKELETON")return open+
-    '<rect x="20" y="18" width="88" height="14" fill="#6f747b"/><rect x="14" y="25" width="100" height="8" fill="#3b3f44"/>'+
-    '<rect x="20" y="32" width="12" height="72" fill="#565b61"/><rect x="96" y="32" width="12" height="72" fill="#565b61"/>'+
-    '<rect x="32" y="38" width="8" height="60" fill="#a6abb0"/><rect x="52" y="38" width="8" height="60" fill="#8f9499"/><rect x="72" y="38" width="8" height="60" fill="#8f9499"/><rect x="88" y="38" width="8" height="60" fill="#a6abb0"/>'+
-    '<rect x="28" y="96" width="72" height="12" fill="#33373c"/><rect x="36" y="104" width="56" height="8" fill="#1f2226"/>'+
-    '<rect x="49" y="53" width="30" height="30" fill="#c8cdd1"/><rect x="45" y="61" width="8" height="16" fill="#b4b9bd"/><rect x="75" y="61" width="8" height="16" fill="#b4b9bd"/>'+
-    '<rect x="54" y="61" width="8" height="8" fill="#25292d"/><rect x="66" y="61" width="8" height="8" fill="#25292d"/><rect x="58" y="73" width="16" height="6" fill="#555b61"/>'+
-    '<rect x="58" y="35" width="8" height="10" fill="#ff8a24"/><rect x="52" y="40" width="8" height="8" fill="#ffb13b"/><rect x="66" y="40" width="8" height="8" fill="#ff6b1a"/>'+
-    '<rect x="10" y="15" width="8" height="8" fill="#d9dde1"/><rect x="110" y="12" width="6" height="6" fill="#d9dde1"/>'+
-    '<rect x="14" y="108" width="100" height="5" fill="#101216"/><rect x="22" y="113" width="84" height="4" fill="#000" opacity=".45"/></svg>';
-  if(symbol==="ELYTRA" || symbol==="ELYTRA_ENCH"){
-    const ench=symbol==="ELYTRA_ENCH";
-    const wing=ench ? "#6b4bd6" : "#7b6f63", wing2=ench ? "#a98cff" : "#b7a88e", edge=ench ? "#4a2e9b" : "#4b433b";
-    return open+
-      (ench?'<rect x="18" y="28" width="6" height="6" fill="#d7c7ff"/><rect x="103" y="22" width="5" height="5" fill="#74fff2"/><rect x="109" y="75" width="6" height="6" fill="#d7c7ff"/>':"")+
-      '<path d="M61 43 48 25 25 22 10 31 20 91 35 105 56 98 64 78Z" fill="'+wing+'" stroke="'+edge+'" stroke-width="5"/>'+
-      '<path d="M67 43 80 25 103 22 118 31 108 91 93 105 72 98 64 78Z" fill="'+wing+'" stroke="'+edge+'" stroke-width="5"/>'+
-      '<path d="M60 43 52 35 29 30 18 36 26 80 38 94 54 88 62 73Z" fill="'+wing2+'"/>'+
-      '<path d="M68 43 76 35 99 30 110 36 102 80 90 94 74 88 66 73Z" fill="'+wing2+'"/>'+
-      '<path d="M64 36 56 49 59 89 64 100 69 89 72 49Z" fill="'+(ench?"#b5a4ff":"#8d7d69")+'" stroke="'+(ench?"#e8dcff":"#d5c7ae")+'" stroke-width="4"/>'+
-      '<path d="M24 38 43 48 54 77M104 38 85 48 74 77" fill="none" stroke="'+(ench?"#d8c9ff":"#ddd0ba")+'" stroke-width="4"/>'+
-      (ench?'<rect x="31" y="56" width="5" height="5" fill="#fff"/><rect x="91" y="48" width="5" height="5" fill="#75fff0"/><rect x="22" y="72" width="4" height="4" fill="#cdbdff"/>':"")+
-      '<rect x="14" y="88" width="6" height="6" fill="'+edge+'"/><rect x="108" y="88" width="6" height="6" fill="'+edge+'"/></svg>';
-  }
-  if(symbol==="EGAPPLE")return open+
-    '<rect x="51" y="18" width="9" height="13" fill="#6b4a24"/><rect x="59" y="13" width="18" height="8" fill="#4d8a2c"/><rect x="72" y="18" width="12" height="8" fill="#6dbd3c"/>'+
-    '<rect x="42" y="30" width="44" height="9" fill="#ffd94d"/><rect x="31" y="39" width="66" height="10" fill="#f2bd25"/><rect x="24" y="49" width="80" height="30" fill="#e9aa18"/><rect x="31" y="79" width="66" height="18" fill="#d8910e"/><rect x="42" y="97" width="44" height="10" fill="#b8730b"/>'+
-    '<rect x="31" y="47" width="17" height="18" fill="#ffe36a"/><rect x="40" y="39" width="17" height="10" fill="#fff08b"/><rect x="48" y="66" width="14" height="8" fill="#f6c32b"/>'+
-    '<rect x="97" y="53" width="8" height="8" fill="#a86b08"/><rect x="24" y="64" width="8" height="10" fill="#c77f0c"/>'+
-    '<rect x="14" y="29" width="6" height="6" fill="#fff1a1"/><rect x="103" y="38" width="5" height="5" fill="#fff1a1"/><rect x="18" y="88" width="5" height="5" fill="#ffd84d"/></svg>';
-  return open+'<rect x="24" y="24" width="80" height="80" fill="#4a4f55"/><rect x="32" y="32" width="64" height="64" fill="#777e85"/><rect x="44" y="44" width="40" height="40" fill="#9aa1a7"/></svg>';
+  const assets="https://assets.mcasset.cloud/1.21.11/assets/minecraft/textures/";
+  const data={
+    SKELETON:["Skeleton-Spawner",assets+"block/spawner.png","block"],
+    ELYTRA:["Elytra",assets+"item/elytra.png","item"],
+    ELYTRA_ENCH:["Verzauberte Elytra",assets+"item/elytra.png","enchanted"],
+    EGAPPLE:["Enchanted Golden Apple",assets+"item/enchanted_golden_apple.png","item"]
+  };
+  const [label,src,type]=data[symbol]||["Minecraft Item",assets+"item/diamond.png","item"];
+  return '<div class="market-real-art '+(type==="enchanted"?"market-real-art-ench":"")+'"><img src="'+src+'" alt="'+esc(label)+'" loading="lazy" decoding="async" referrerpolicy="no-referrer">'+(type==="enchanted"?'<span class="market-enchant-glint" aria-hidden="true"></span>':"")+'</div>';
 }
 
 async function renderMarket() {
@@ -522,11 +511,11 @@ async function renderBuilding() {
     return '<article class="list-item"><div class="item-head"><strong>'+esc(o.title)+'</strong><span class="pill">'+esc(o.status)+'</span></div><p>'+esc(o.description)+'</p><div class="inline-meta">Budget: '+(o.budget===null?"Offen":number(o.budget))+' · '+dateTime(o.created_at)+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch keine Nachrichten vom Team.</div>')+'</div><form class="chat-compose" data-building-message="'+o.id+'"><input class="input" name="message" maxlength="2000" placeholder="Nachricht an das Team …" required><button class="btn small">Senden</button></form></article>';
   }).join("");
   return pageHead("PLAYER SERVICE","Building Service","Was soll gebaut werden? Das Team kann den Status aktualisieren und mit dir schreiben.")+
-    '<div class="grid two"><section class="card"><h2>Neuen Auftrag erstellen</h2><form class="form" id="building-form"><div class="field"><label>Titel</label><input class="input" name="title" maxlength="100" required></div><div class="field"><label>Beschreibung</label><textarea name="description" maxlength="4000" required></textarea></div><div class="field"><label>Budget (optional)</label><input class="input" name="budget" type="number" min="0"></div><button class="btn">Auftrag senden</button></form></section><section class="card"><h2>Deine Aufträge</h2><div class="list">'+(cards||empty("Du hast noch keine Aufträge erstellt."))+'</div></section></div>';
+    '<div class="grid two"><section class="card"><h2>Neuen Auftrag erstellen</h2><form class="form" id="building-form"><div class="field"><label>Titel</label><input class="input" name="title" maxlength="100" required></div><div class="field"><label>Beschreibung</label><textarea name="description" maxlength="4000" required></textarea></div><div class="field"><label>Budget</label><input class="input" name="budget" type="number" min="0" required></div><button class="btn">Auftrag senden</button></form></section><section class="card"><h2>Deine Aufträge</h2><div class="list">'+(cards||empty("Du hast noch keine Aufträge erstellt."))+'</div></section></div>';
 }
 
 async function renderApplications() {
-  if(!currentUser)return pageHead("JOIN THE TEAM","Team bewerben","Bewirb dich als Helper, Moderator oder Media.")+'<div class="card">'+empty("Melde dich an, um dich fürs Team zu bewerben.")+'<button class="btn" data-route="login">Anmelden</button></div>';
+  if(!currentUser)return pageHead("JOIN THE TEAM","Team bewerben","Aktuell kannst du dich ausschließlich als Builder bewerben.")+'<div class="card">'+empty("Melde dich an, um dich fürs Team zu bewerben.")+'<button class="btn" data-route="login">Anmelden</button></div>';
   const {data,error}=await db.from("applications").select("id,desired_role,reason,experience,status,created_at").eq("user_id",currentUser.id).order("created_at",{ascending:false});
   if(error)throw error;
   const messageResults=await Promise.all((data??[]).map(async a=>{
@@ -539,7 +528,7 @@ async function renderApplications() {
     return '<article class="list-item"><div class="item-head"><strong>'+esc(a.desired_role)+'</strong><span class="pill">'+esc(a.status)+'</span></div><p>'+esc(a.reason)+'</p><div class="inline-meta">'+dateTime(a.created_at)+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch keine Rückfragen vom Team.</div>')+'</div><form class="chat-compose" data-application-message="'+a.id+'"><input class="input" name="message" maxlength="2000" placeholder="Nachricht zur Bewerbung …" required><button class="btn small">Senden</button></form></article>';
   }).join("");
   return pageHead("JOIN THE TEAM","Team bewerben","Team-Anträge sind nur für Teamrollen vorgesehen. Das Team prüft deine Bewerbung.")+
-    '<div class="grid two"><section class="card"><h2>Bewerbung erstellen</h2><form class="form" id="application-form"><div class="field"><label>Gewünschte Rolle</label><select name="desired_role"><option value="helper">Helper</option><option value="moderator">Moderator</option><option value="media">Media</option></select></div><div class="field"><label>Warum möchtest du ins Team?</label><textarea name="reason" minlength="30" maxlength="4000" required></textarea></div><div class="field"><label>Erfahrung (optional)</label><textarea name="experience" maxlength="3000"></textarea></div><button class="btn">Bewerbung senden</button></form></section><section class="card"><h2>Deine Bewerbungen</h2><div class="list">'+(cards||empty("Noch keine Bewerbungen vorhanden."))+'</div></section></div>';
+    '<div class="grid two"><section class="card"><h2>Bewerbung erstellen</h2><form class="form" id="application-form"><div class="field"><label>Gewünschte Rolle</label><select name="desired_role" required><option value="builder">Builder</option></select></div><div class="field"><label>Warum möchtest du ins Team?</label><textarea name="reason" minlength="30" maxlength="4000" required></textarea></div><div class="field"><label>Erfahrung (optional)</label><textarea name="experience" maxlength="3000"></textarea></div><button class="btn">Bewerbung senden</button></form></section><section class="card"><h2>Deine Bewerbungen</h2><div class="list">'+(cards||empty("Noch keine Bewerbungen vorhanden."))+'</div></section></div>';
 }
 
 async function renderProfile() {
@@ -640,7 +629,7 @@ function openMarketTicket(ticketId){
   const close=()=>modal.remove();modal.querySelector(".modal-close").onclick=close;modal.querySelector(".krake-modal-backdrop").onclick=close;
   (async()=>{
     const [{data:t,error:te},{data:messages,error:me}]=await Promise.all([
-      db.from("market_tickets").select("id,user_id,quantity,message,status,created_at,market_items(name,symbol),profiles(username,display_name)").eq("id",ticketId).maybeSingle(),
+      db.from("market_tickets").select("id,user_id,quantity,message,status,created_at,market_items(name,symbol),requester:profiles!market_tickets_user_id_fkey(username,display_name)").eq("id",ticketId).maybeSingle(),
       db.from("market_ticket_messages").select("id,user_id,message,created_at").eq("ticket_id",ticketId).order("created_at")
     ]);
     if(te)throw te;if(me)throw me;
@@ -734,6 +723,11 @@ async function loadChatMessages() {
 function showConfirm(title,message,confirmText="Bestätigen"){return new Promise(resolve=>{const old=$("krake-confirm");if(old)old.remove();const el=document.createElement("div");el.id="krake-confirm";el.className="krake-modal";el.innerHTML='<div class="krake-modal-backdrop"></div><div class="krake-modal-card confirm-modal"><button class="modal-close" type="button" data-confirm-no>×</button><div class="eyebrow">BESTÄTIGUNG</div><h2>'+esc(title)+'</h2><p class="muted">'+esc(message)+'</p><div class="action-row"><button class="btn danger" data-confirm-yes>'+esc(confirmText)+'</button><button class="btn secondary" data-confirm-no>Abbrechen</button></div></div>';document.body.appendChild(el);const done=v=>{el.remove();resolve(v);};el.querySelectorAll("[data-confirm-no]").forEach(b=>b.onclick=()=>done(false));el.querySelector("[data-confirm-yes]").onclick=()=>done(true);el.querySelector(".krake-modal-backdrop").onclick=()=>done(false);});}
 
 function wireChat() {
+  document.querySelectorAll("[data-public-chat-mode]").forEach(button=>button.addEventListener("click",async()=>{
+    if(!isAdmin())return;
+    try{const mode=button.dataset.publicChatMode;await callAdmin("chat_mode",{mode,slow_seconds:5});toast("Chat-Modus geändert.","success");await renderPage();}
+    catch(error){toast(error.message,"error");}
+  }));
   $("chat-form")?.addEventListener("submit",async event=>{
     event.preventDefault();
     if(!currentUser){toast("Bitte zuerst anmelden.","error");return;}
@@ -815,7 +809,18 @@ function wireReaction() {
     const {error}=await db.from("minigame_results").insert({minigame_id:game.id,user_id:currentUser.id,score:Math.max(0,Math.round(score||0)),time_ms:timeMs??null,won:Boolean(won),metadata});
     if(error)toast("Ergebnis konnte nicht gespeichert werden: "+error.message,"error");
     else {
-      toast("Ergebnis gespeichert!","success");
+      let placement=null;
+      try{
+        const snapshot=await fetchLeaderboardSnapshot();
+        const player=[...(snapshot.groups.get(game.id)?.values()||[])].find(p=>p.user_id===currentUser.id);
+        placement=player?.placement??null;
+      }catch(rankError){console.warn("Game placement unavailable:",rankError.message);}
+      const resultHost=$("game-area");
+      if(resultHost){
+        resultHost.querySelector(".game-result-rank")?.remove();
+        resultHost.insertAdjacentHTML("afterbegin",'<div class="game-result-rank"><strong>'+Math.max(0,Math.round(score||0))+(timeMs!==null&&timeMs!==undefined?' · '+(Number(timeMs)>=1000?(Number(timeMs)/1000).toFixed(2)+' s':Math.round(Number(timeMs))+' ms'):'')+'</strong>'+(placement?'<span>Platz '+placement+'</span>':"")+'</div>');
+      }
+      toast(placement?"Ergebnis gespeichert · Platz "+placement:"Ergebnis gespeichert!","success");
       window.setTimeout(()=>{
         if(!$("game-stage")||$("game-stage").hidden)return;
         $("game-area").innerHTML='<div class="game-center"><div class="muted">Bereit für die nächste Runde?</div><button class="btn" data-game-replay="'+esc(slug)+'">Nochmal spielen</button></div>';
@@ -950,7 +955,7 @@ async function loadAdminSection(section) {
       const rows=(data??[]).map(p=>'<tr><td><strong>'+esc(p.display_name||p.username)+badge(p.verified)+'</strong></td><td>'+esc(p.username)+'</td><td>'+dateTime(p.created_at)+'</td><td><button class="btn small danger" data-player-action="ban" data-user="'+p.id+'">Bannen</button> <button class="btn small secondary" data-player-action="mute" data-user="'+p.id+'">Muten</button> <button class="btn small ghost" data-player-action="password" data-user="'+p.id+'">Passwort reset</button></td></tr>').join("");
       node.innerHTML='<div class="card"><h2>Spieler verwalten</h2><div class="table-wrap"><table><thead><tr><th>Username</th><th>Anzeigename</th><th>Erstellt</th><th>Aktionen</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
     } else if(section==="bans"){
-      const {data,error}=await db.from("bans").select("id,user_id,reason,starts_at,expires_at,profiles(username)").eq("active",true).order("starts_at",{ascending:false}).limit(100);if(error)throw error;
+      const {data,error}=await db.from("bans").select("id,user_id,reason,starts_at,expires_at,profiles:profiles!bans_user_id_fkey(username)").eq("active",true).order("starts_at",{ascending:false}).limit(100);if(error)throw error;
       node.innerHTML='<div class="card"><h2>Aktive Sperren</h2><div class="list">'+((data??[]).map(b=>'<article class="list-item"><div class="item-head"><strong>'+esc(b.profiles?.username||b.user_id)+'</strong><span class="pill red">GESPERRT</span></div><p>'+esc(b.reason)+'</p><div class="inline-meta">Seit '+dateTime(b.starts_at)+' · Ende: '+(b.expires_at?dateTime(b.expires_at):"Unbefristet")+'</div><div class="action-group"><button class="btn small secondary" data-unban="'+b.user_id+'">Entbannen</button></div></article>').join("")||empty("Keine aktiven Sperren."))+'</div></div>';
     } else if(section==="verifications"){
       const {data,error}=await db.from("verification_requests").select("id,user_id,minecraft_name,status,requested_at").eq("status","pending").order("requested_at");if(error)throw error;
@@ -959,7 +964,7 @@ async function loadAdminSection(section) {
       if(verifyIds.length){const {data:profilesData,error:profilesError}=await db.from("profiles").select("id,username,display_name").in("id",verifyIds);if(profilesError)console.warn("Minecraft profiles:",profilesError.message);verifyProfiles=new Map((profilesData??[]).map(p=>[p.id,p]));}
       node.innerHTML='<div class="card"><h2>Offene Minecraft-Verifizierungen</h2><p class="muted">Minecraft-Anträge werden getrennt von Profil-Daten geladen, damit der Admin-Bereich auch bei fehlerhaften Beziehungen funktioniert.</p><div class="list">'+((data??[]).map(v=>{const p=verifyProfiles.get(v.user_id);return '<article class="list-item"><div class="item-head"><strong>'+esc(p?.display_name||p?.username||v.user_id)+'</strong><span class="pill red">pending</span></div><p>Minecraft: <strong>'+esc(v.minecraft_name)+'</strong></p><div class="inline-meta">'+dateTime(v.requested_at)+'</div><div class="action-group"><button class="btn small" data-verify="yes" data-id="'+v.id+'">Verifizieren</button><button class="btn small danger" data-verify="no" data-id="'+v.id+'">Ablehnen</button></div></article>';}).join("")||empty("Keine offenen Anträge."))+'</div></div>';
     } else if(section==="applications"){
-      const {data,error}=await db.from("applications").select("id,user_id,desired_role,reason,experience,status,created_at,profiles(username)").order("created_at",{ascending:false}).limit(50);if(error)throw error;
+      const {data,error}=await db.from("applications").select("id,user_id,desired_role,reason,experience,status,created_at,profiles:profiles!applications_user_id_fkey(username)").order("created_at",{ascending:false}).limit(50);if(error)throw error;
       const appMsgResults=await Promise.all((data??[]).map(async a=>{
         const {data:messages,error:messageError}=await db.rpc("application_message_history",{p_application_id:a.id});
         if(messageError)throw messageError;return (messages??[]).map(m=>({...m,application_id:a.id}));
@@ -970,7 +975,7 @@ async function loadAdminSection(section) {
         return '<article class="list-item"><div class="item-head"><strong>'+esc(a.profiles?.username||"Player")+' · '+esc(a.desired_role)+'</strong><span class="pill">'+esc(a.status)+'</span></div><p>'+esc(a.reason)+'</p><div class="inline-meta">'+esc(a.experience||"Keine Erfahrung angegeben")+' · '+dateTime(a.created_at)+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch kein Nachrichtenverlauf.</div>')+'</div><form class="chat-compose" data-admin-app-message="'+a.id+'"><input class="input" name="message" maxlength="2000" placeholder="Private Nachricht an Bewerber …" required><button class="btn small">Senden</button></form><div class="action-group"><button class="btn small" data-application-status="accepted" data-id="'+a.id+'">Annehmen + Rang</button><button class="btn small danger" data-application-status="rejected" data-id="'+a.id+'">Ablehnen</button><button class="btn small ghost" data-application-status="reviewing" data-id="'+a.id+'">In Prüfung</button></div></article>';
       }).join("")||empty("Keine Bewerbungen vorhanden."))+'</div></div>';
     } else if(section==="building"){
-      const {data,error}=await db.from("building_orders").select("id,user_id,title,description,budget,status,created_at,profiles(username)").order("created_at",{ascending:false}).limit(50);if(error)throw error;
+      const {data,error}=await db.from("building_orders").select("id,user_id,title,description,budget,status,created_at,profiles:profiles!building_orders_user_id_fkey(username)").order("created_at",{ascending:false}).limit(50);if(error)throw error;
       const orderMsgResults=await Promise.all((data??[]).map(async o=>{
         const {data:messages,error:messageError}=await db.rpc("building_message_history",{p_order_id:o.id});
         if(messageError)throw messageError;return (messages??[]).map(m=>({...m,order_id:o.id}));
@@ -992,7 +997,7 @@ async function loadAdminSection(section) {
       const {data:chatMode}=await db.from("chat_settings").select("mode,slow_seconds").eq("id",1).maybeSingle();
       const [reportResult,messageResult]=await Promise.all([
         db.from("chat_reports").select("id,message_id,reporter_user_id,reason,status,created_at").order("created_at",{ascending:false}).limit(50),
-        db.from("chat_messages").select("id,user_id,message,created_at,profiles(username)").is("deleted_at",null).order("created_at",{ascending:false}).limit(40)
+        db.from("chat_messages").select("id,user_id,message,created_at,profiles:profiles!chat_messages_user_id_fkey(username)").is("deleted_at",null).order("created_at",{ascending:false}).limit(40)
       ]);
       if(reportResult.error)throw reportResult.error;if(messageResult.error)throw messageResult.error;
       const reportCards=(reportResult.data??[]).map(r=>'<article class="list-item"><div class="item-head"><strong>Report #'+r.id+'</strong><span class="pill">'+esc(r.status)+'</span></div><p>'+esc(r.reason)+'</p><div class="inline-meta">Message #'+esc(r.message_id)+' · '+dateTime(r.created_at)+'</div><div class="action-group"><button class="btn small secondary" data-report-status="resolved" data-id="'+r.id+'">Erledigt</button><button class="btn small danger" data-delete-message="'+r.message_id+'">Nachricht löschen</button><button class="btn small ghost" data-report-status="dismissed" data-id="'+r.id+'">Dismiss</button></div></article>').join("");
