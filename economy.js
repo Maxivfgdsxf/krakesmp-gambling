@@ -5,6 +5,22 @@ NAV.splice(4,0,["economy","▤","KRAKE Börse","Community"]); VALID_ROUTES.add("
 const money=v=>number(Math.max(0,Number(v||0)))+" KC";
 const call=async(n,a)=>{const r=await db.rpc(n,a||{});if(r.error)throw r.error;return r.data;};
 const err=e=>String(e&&e.message||"Aktion fehlgeschlagen.");
+const marketIcon=(s)=>{
+  const text=(String(s.name||"")+" "+String(s.symbol||"")+" "+String(s.sector||"")).toLowerCase();
+  if(/apple|appel|food|apfel|gastro|farm/.test(text))return "🍎";
+  if(/diamond|diamant|lux|jewel|edel/.test(text))return "💎";
+  if(/emerald|smaragd|green/.test(text))return "💚";
+  if(/iron|eisen|steel|metall/.test(text))return "⛏️";
+  if(/gold|finance|bank|money/.test(text))return "🪙";
+  if(/redstone|energy|tech|power/.test(text))return "🔴";
+  if(/ender|portal|dimension/.test(text))return "🟣";
+  if(/nether|lava|fire/.test(text))return "🔥";
+  if(/wood|forest|nature|farm/.test(text))return "🌲";
+  if(/water|ocean|aqua/.test(text))return "💧";
+  if(/weapon|sword|combat/.test(text))return "⚔️";
+  if(/rocket|space|aero/.test(text))return "🚀";
+  return s.source_type==="player"?"🧑‍🌾":"🧱";
+};
 async function renderEconomy(){
  if(!currentUser)return pageHead("KRAKE ECONOMY","KRAKE Börse","Melde dich an, um KC zu verdienen und Aktien zu handeln.")+'<section class="card"><p class="muted">Dein KRAKE-Konto schaltet die Börse frei.</p><button class="btn" data-route="login">Anmelden</button></section>';
  await call("economy_market_tick");
@@ -38,7 +54,7 @@ async function renderEconomy(){
   const pct=Number(s.previous_price)?(Number(s.current_price)-Number(s.previous_price))/Number(s.previous_price)*100:0,own=holds.find(h=>h.stock_id===s.id),pts=(hm.get(s.id)||[]).slice(0,12).reverse(),prices=pts.map(p=>Number(p.price)).concat([Number(s.current_price)]),lo=Math.min.apply(null,prices),hi=Math.max.apply(null,prices);
   const points=pts.map((p,i)=>i*12+","+(48-(hi===lo?22:(Number(p.price)-lo)/(hi-lo)*42))).join(" ");
   const chart=points?'<svg class="eco-spark" viewBox="0 0 132 54" preserveAspectRatio="none"><polyline points="'+points+'" fill="none" stroke="'+(pct>=0?"#5bd69a":"#ff6475")+'" stroke-width="2.5"/></svg>':"";
-  return '<article class="eco-stock card" data-stock-card data-symbol="'+esc(s.symbol)+'" data-name="'+esc(s.name)+'" data-sector="'+esc(s.sector)+'" data-kind="'+s.source_type+'"><div class="eco-stock-head"><div><span class="eyebrow">'+esc(s.symbol)+' · '+esc(s.sector)+'</span><h3>'+esc(s.name)+'</h3><small>'+(s.source_type==="brand"?"Marken-Spielversion":s.source_type==="player"?"Spieler-Aktie · "+esc(sellerMap.get(s.owner_id)?.display_name||sellerMap.get(s.owner_id)?.username||"Spieler erstellt"):"KRAKE-Unternehmen")+'</small></div><span class="eco-change '+(pct>=0?"up":"down")+'">'+(pct>=0?"+":"")+pct.toFixed(2)+'%</span></div><div class="eco-price-line"><strong>'+money(s.current_price)+'</strong>'+chart+'</div><div class="eco-card-meta"><span>Dividende '+(Number(s.dividend_bps)/100).toFixed(2)+' % / Tag</span><span>Bestand '+number(own&&own.shares||0)+'</span></div><'+(s.source_type==="player"?"a class=\"btn secondary small\" href=\"#economy-market\" data-eco-scroll=\"market\">Im Spielerhandel ansehen</a>":'<form class="eco-order" data-stock-order="'+s.id+'"><input class="input" name="shares" type="number" min="1" max="1000000" value="1" required><button class="btn small" value="buy">Kaufen</button><button class="btn secondary small" value="sell">Verkaufen</button></form>')+'</article>';
+  return '<article class="eco-stock card" data-stock-card data-symbol="'+esc(s.symbol)+'" data-name="'+esc(s.name)+'" data-sector="'+esc(s.sector)+'" data-kind="'+s.source_type+'"><div class="eco-stock-head"><div class="eco-stock-title"><span class="eco-item-icon" aria-hidden="true">${marketIcon(s)}</span><div><span class="eyebrow">'+esc(s.symbol)+' · '+esc(s.sector)+'</span><h3>'+esc(s.name)+'</h3><small>'+(s.source_type==="brand"?"Marken-Spielversion":s.source_type==="player"?"Spieler-Aktie · "+esc(sellerMap.get(s.owner_id)?.display_name||sellerMap.get(s.owner_id)?.username||"Spieler erstellt"):"KRAKE-Unternehmen")+'</small></div><span class="eco-change '+(pct>=0?"up":"down")+'">'+(pct>=0?"+":"")+pct.toFixed(2)+'%</span></div><div class="eco-price-line"><strong>'+money(s.current_price)+'</strong>'+chart+'</div><div class="eco-card-meta"><span>Dividende '+(Number(s.dividend_bps)/100).toFixed(2)+' % / Tag</span><span>Bestand '+number(own&&own.shares||0)+'</span></div><'+(s.source_type==="player"?"a class=\"btn secondary small\" href=\"#economy-market\" data-eco-scroll=\"market\">Im Spielerhandel ansehen</a>":'<form class="eco-order" data-stock-order="'+s.id+'"><input class="input" name="shares" type="number" min="1" max="1000000" value="1" required><button class="btn small" value="buy">Kaufen</button><button class="btn secondary small" value="sell">Verkaufen</button></form>')+'</article>';
  }).join("");
  const rows=holds.map(h=>{
   const s=h.economy_stocks||{},v=Number(h.shares)*Number(s.current_price||0),c=Number(h.shares)*Number(h.average_price||0),g=v-c;
