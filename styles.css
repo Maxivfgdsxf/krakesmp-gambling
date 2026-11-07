@@ -287,3 +287,43 @@ body{background:
   .action-row{gap:7px}
   .home-hero .action-row .btn{padding:10px 12px;font-size:12px}
 }
+
+
+/* KRAKE 2026 UI refresh */
+.kraken-menu-btn{width:52px;height:52px;border:1px solid rgba(255,83,101,.55);border-radius:16px;background:radial-gradient(circle at 50% 30%,rgba(255,83,101,.28),rgba(12,12,18,.96));display:grid;place-items:center;padding:5px;cursor:pointer;box-shadow:0 0 24px rgba(255,45,70,.18),inset 0 0 18px rgba(255,255,255,.03);transition:.2s transform,.2s box-shadow}
+.kraken-menu-btn:hover{transform:translateY(-2px) scale(1.04);box-shadow:0 0 34px rgba(255,45,70,.34)}
+.kraken-menu-btn .kraken-crest{width:40px;height:40px}
+.admin-badge{display:inline-flex;align-items:center;gap:5px;margin-left:7px;padding:3px 7px;border-radius:999px;background:#8f0b18;color:#fff;border:1px solid #ff3b4d;font-size:9px;font-weight:900;letter-spacing:.12em;vertical-align:middle;box-shadow:0 0 12px rgba(255,40,60,.45)}
+.site-footer a{color:#ff6675;text-decoration:none}
+.market-grid,.games-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:18px}
+.market-card{display:grid;grid-template-columns:150px 1fr;overflow:hidden;padding:0;min-height:270px}
+.market-art{display:grid;place-items:center;position:relative;background:radial-gradient(circle at 50% 35%,rgba(255,70,90,.28),rgba(10,10,16,.98) 65%);font-size:76px;border-right:1px solid rgba(255,255,255,.08)}
+.market-art:after{content:"";position:absolute;inset:20px;border:1px solid rgba(255,83,101,.18);transform:rotate(45deg);border-radius:22px}
+.market-art-ELYTRA,.market-art-ELYTRA_ENCH{background:radial-gradient(circle at 50% 40%,rgba(120,150,255,.28),rgba(10,10,16,.98) 68%)}
+.market-art-EGAPPLE{background:radial-gradient(circle at 50% 40%,rgba(255,205,80,.3),rgba(10,10,16,.98) 68%)}
+.market-card-body{padding:22px}
+.market-card-body h2{margin:4px 0 8px}
+.market-price-row{display:flex;align-items:end;justify-content:space-between;gap:12px;margin:18px 0 10px}
+.market-price-row strong{font-size:34px;letter-spacing:-.03em}
+.price-change{font-size:12px;font-weight:800}
+.price-change.up{color:#64e6a0}.price-change.down{color:#ff6675}
+.market-trend{display:grid;grid-template-columns:1fr auto auto;gap:12px;align-items:center;padding:10px 0 16px}
+.price-chart{width:100%;height:54px;color:#ff5365;background:rgba(255,255,255,.025);border-radius:10px}
+.market-trend small{display:block;color:#8c8c99;font-size:10px}.market-trend b{display:block;margin-top:2px}
+.market-note{display:flex;gap:14px;align-items:center;margin:18px 0;padding:16px 18px;border:1px solid rgba(255,83,101,.18);border-radius:16px;background:linear-gradient(135deg,rgba(255,83,101,.08),rgba(255,255,255,.02))}
+.market-note>span{font-size:25px;color:#ff5365}
+.market-note p{margin:3px 0 0;color:#aaa}
+.market-ticket-btn{width:100%}
+.games-grid{grid-template-columns:repeat(3,minmax(0,1fr))}
+.game-card{display:grid;grid-template-columns:auto 1fr auto;align-items:center;gap:14px}
+.game-icon{width:58px;height:58px;border-radius:16px;display:grid;place-items:center;font-size:28px;background:linear-gradient(145deg,rgba(255,83,101,.2),rgba(255,255,255,.03));border:1px solid rgba(255,83,101,.2)}
+.game-stage{margin-top:18px}
+.game-center{min-height:280px;display:grid;place-items:center;align-content:center;gap:18px;text-align:center}
+.memory-grid{display:grid;grid-template-columns:repeat(4,90px);justify-content:center;gap:12px;padding:25px}
+.memory-card{height:90px;border-radius:14px;border:1px solid rgba(255,83,101,.25);background:#11131a;color:#fff;font-size:30px;cursor:pointer}.memory-card.found{background:rgba(70,210,140,.18);border-color:#55d89a}
+.aim-zone{height:380px;position:relative;border-radius:20px;background:radial-gradient(circle at center,rgba(255,83,101,.12),rgba(7,8,12,.96));border:1px solid rgba(255,255,255,.08);overflow:hidden}
+#aim-target{position:absolute;width:54px;height:54px;border-radius:50%;border:3px solid #fff;background:#e42336;color:#fff;font-size:26px;font-weight:900;transform:translate(-50%,-50%);cursor:crosshair;box-shadow:0 0 22px rgba(255,50,70,.7)}
+.duel-grid,.quiz-box{display:grid;gap:14px;max-width:620px;margin:30px auto;text-align:center}.quiz-options{display:grid;grid-template-columns:repeat(3,1fr);gap:12px}
+.leaderboard-tabs{display:flex;gap:8px;overflow:auto;padding-bottom:12px;margin-bottom:10px}.leaderboard-tab{white-space:nowrap;border:1px solid rgba(255,255,255,.08);background:rgba(255,255,255,.03);color:#aaa;padding:10px 14px;border-radius:12px;cursor:pointer}.leaderboard-tab.active{color:#fff;border-color:#ff5365;background:rgba(255,83,101,.12)}
+.leaderboard-game[hidden]{display:none}.leaderboard-shell{overflow:hidden}
+@media (max-width:900px){.market-grid,.games-grid{grid-template-columns:1fr}.market-card{grid-template-columns:100px 1fr}.games-grid{grid-template-columns:1fr}.memory-grid{grid-template-columns:repeat(4,65px)}.memory-card{height:65px}.quiz-options{grid-template-columns:1fr}}
