@@ -63,6 +63,8 @@ const NAV = [
   ["settings","⚙","Einstellungen","Account"]
 ];
 
+const VALID_ROUTES = new Set([...NAV.map(([route])=>route),"login","admin","market-tickets","impressum"]);
+
 function toast(message, kind="info") {
   let node = $("toast");
   if (!node) return;
@@ -73,8 +75,10 @@ function toast(message, kind="info") {
   toast.timer = window.setTimeout(() => node.classList.remove("show"), 3400);
 }
 function go(route) {
-  location.hash = route;
+  const target=String(route||"home").replace(/^#/,"").split("?")[0].split("/")[0]||"home";
   closeDrawer();
+  if(location.hash==="#"+target){void renderPage();return;}
+  location.hash=target;
 }
 function openDrawer() {
   $("drawer")?.classList.add("open");
@@ -578,35 +582,58 @@ async function renderAdmin() {
     ].map(([k,v])=>'<button data-admin-tab="'+k+'" class="'+(adminSection===k?"active":"")+'">'+v+'</button>').join("")+'</div><div id="admin-content" class="admin-layout">'+empty("Bereich wird geladen …")+'</div></section>';
 }
 
+function navigationError(title,message) {
+  return '<section class="card nav-error" role="alert"><div class="eyebrow">NAVIGATION</div><h2>'+esc(title)+'</h2><p class="muted">'+esc(message)+'</p><div class="action-row"><button class="btn" data-route="home">Zur Startseite</button><button class="btn secondary" type="button" id="nav-retry">Erneut versuchen</button></div></section>';
+}
+function wireNavigationErrorRetry() {
+  $("nav-retry")?.addEventListener("click",()=>{void renderPage();});
+}
+let navigationRequestId=0;
 async function renderPage() {
-  if(activeChatChannel){await db.removeChannel(activeChatChannel);activeChatChannel=null;}
-  if(chatPollTimer){clearInterval(chatPollTimer);chatPollTimer=null;}
-  if(reactionTimeout){clearTimeout(reactionTimeout);reactionTimeout=null;}
-  const route=(location.hash.slice(1)||"home").split("?")[0].split("/")[0];
-  currentRoute=route;
-  let content="";
+  const requestId=++navigationRequestId;
+  const route=(location.hash.slice(1)||"home").split("?")[0].split("/")[0]||"home";
   try {
-    if(route==="login")content=await renderLogin();
-    else if(route==="chat")content=await renderChat();
-    else if(route==="leaderboards")content=await renderLeaderboards();
-    else if(route==="market")content=await renderMarket();
-    else if(route==="minigames")content=await renderMinigames();
-    else if(route==="events")content=await renderEvents();
-    else if(route==="building")content=await renderBuilding();
-    else if(route==="applications")content=await renderApplications();
-    else if(route==="profile")content=await renderProfile();
-    else if(route==="settings")content=await renderSettings();
-    else if(route==="admin")content=await renderAdmin();
-    else if(route==="market-tickets")content=await renderMarketTickets();
-    else if(route==="impressum")content=await renderImpressum();
-    else {currentRoute="home";content=await renderHome();}
+    if(activeChatChannel){await db.removeChannel(activeChatChannel);activeChatChannel=null;}
+    if(chatPollTimer){clearInterval(chatPollTimer);chatPollTimer=null;}
+    if(reactionTimeout){clearTimeout(reactionTimeout);reactionTimeout=null;}
+    if(requestId!==navigationRequestId)return;
+
+    currentRoute=route;
+    let content="";
+    try {
+      if(!VALID_ROUTES.has(route)){
+        content=navigationError("Seite nicht gefunden","Der Bereich „"+route+"“ existiert nicht oder ist über diese Navigation nicht erreichbar.");
+      } else if(route==="login")content=await renderLogin();
+      else if(route==="chat")content=await renderChat();
+      else if(route==="leaderboards")content=await renderLeaderboards();
+      else if(route==="market")content=await renderMarket();
+      else if(route==="minigames")content=await renderMinigames();
+      else if(route==="events")content=await renderEvents();
+      else if(route==="building")content=await renderBuilding();
+      else if(route==="applications")content=await renderApplications();
+      else if(route==="profile")content=await renderProfile();
+      else if(route==="settings")content=await renderSettings();
+      else if(route==="admin")content=await renderAdmin();
+      else if(route==="market-tickets")content=await renderMarketTickets();
+      else if(route==="impressum")content=await renderImpressum();
+      else content=await renderHome();
+    } catch(error) {
+      console.error("Navigation load failed:",error);
+      content=navigationError("Dieser Bereich konnte nicht geladen werden",error?.message||"Unbekannter Fehler beim Seitenwechsel.");
+    }
+
+    if(requestId!==navigationRequestId)return;
+    shell(content);
+    wirePage(route);
+    wireNavigationErrorRetry();
+    if(route==="admin" && isAdmin()) await loadAdminSection(adminSection);
   } catch(error) {
-    console.error(error);
-    content='<section class="card"><div class="eyebrow">SYSTEM</div><h2>Dieser Bereich konnte nicht geladen werden.</h2><p class="muted">'+esc(error.message)+'</p><button class="btn secondary" data-route="home">Zur Startseite</button></section>';
+    console.error("Navigation failed:",error);
+    if(requestId!==navigationRequestId)return;
+    currentRoute=route;
+    shell(navigationError("Navigation fehlgeschlagen",error?.message||"Der Seitenwechsel konnte nicht abgeschlossen werden."));
+    wireNavigationErrorRetry();
   }
-  shell(content);
-  wirePage(route);
-  if(route==="admin" && isAdmin()) await loadAdminSection(adminSection);
 }
 
 function openMarketTicketCreator(itemId,itemName){
