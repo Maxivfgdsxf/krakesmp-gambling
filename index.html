@@ -1,83 +1,17 @@
-
-<!DOCTYPE html>
+<!doctype html>
 <html lang="de">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>KRAKESMP | Official</title>
-  <link rel="stylesheet" href="style.css">
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <meta name="theme-color" content="#08090d">
+  <meta name="description" content="KRAKE SMP — dein Community-Portal für Chat, Rankings, Events und Services.">
+  <title>KRAKE SMP — Community Portal</title>
+  <link rel="stylesheet" href="styles.css">
   <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <script src="config.js"></script>
+  <script defer src="app.js"></script>
 </head>
 <body>
-
-<header>
-  <h1>👑 KRAKESMP</h1>
-  <p>OFFICIAL PLAYER LEADERBOARD</p>
-</header>
-
-<main>
-
-<section class="card">
-  <h2>🏆 LEADERBOARD</h2>
-  <div id="ranking">Rangliste wird geladen...</div>
-</section>
-
-<section class="card" id="loginPanel">
-  <h2>🔐 ACCOUNT</h2>
-
-  <div class="tabs">
-    <button type="button" id="showLogin">LOGIN</button>
-    <button type="button" id="showRegister" class="secondary">ACCOUNT BEANTRAGEN</button>
-  </div>
-
-  <div id="loginForm">
-    <input id="loginUsername" placeholder="Benutzername" maxlength="20" autocomplete="username">
-    <input id="loginCode" type="password" placeholder="Sicherheitscode" autocomplete="current-password">
-    <button type="button" id="loginButton">EINLOGGEN</button>
-  </div>
-
-  <div id="registerForm" hidden>
-    <input id="registerUsername" placeholder="Gewünschter Benutzername" maxlength="20">
-    <button type="button" id="registerButton">ACCOUNT BEANTRAGEN</button>
-    <p class="small">
-      Dein Account muss erst vom Owner freigeschaltet werden.
-      Du erhältst deinen Sicherheitscode anschließend privat.
-    </p>
-  </div>
-
-  <p id="authMessage" role="status"></p>
-</section>
-
-<section class="card" id="dashboard" hidden>
-  <h2>👤 MEIN ACCOUNT</h2>
-
-  <p>Spieler: <b id="profileName"></b></p>
-
-  <div class="stats">
-    <div class="stat">Runden<b id="myRounds">0</b></div>
-    <div class="stat">Profit<b id="myProfit">0 Coins</b></div>
-    <div class="stat">Winrate<b id="myWinrate">0%</b></div>
-  </div>
-
-  <hr>
-
-  <h3>📜 LETZTE SPIELRUNGEN</h3>
-  <div id="myRoundsList">Keine Spielrunden vorhanden.</div>
-
-  <button type="button" class="secondary" id="logoutButton">
-    ABMELDEN
-  </button>
-
-  <button type="button" id="ownerButton" hidden
-    onclick="location.href='admin.html'">
-    👑 OWNER PANEL
-  </button>
-</section>
-
-</main>
-
-<footer>KRAKESMP · OFFICIAL STATISTICS</footer>
-
-<script src="app.js"></script>
+  <div id="app"><div class="boot"><span class="kraken-mark">♛</span><p>KRAKE SMP wird geladen …</p></div></div>
 </body>
 </html>

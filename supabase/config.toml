@@ -1,2 +1,4 @@
-[functions.owner-api]
+project_id = "zrijikvllmotgsixcguc"
+
+[functions.krake-auth]
 verify_jwt = false
