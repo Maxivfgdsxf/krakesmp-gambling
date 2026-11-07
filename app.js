@@ -307,38 +307,40 @@ async function renderLogin() {
   `;
 }
 
+function chatMessageMarkup(m) {
+  const name=m.profiles?.display_name||m.profiles?.username||"Player";
+  const report=currentUser&&currentUser.id!==m.user_id?'<button type="button" class="btn ghost small" data-report="'+m.id+'">Melden</button>':"";
+  const moderation=isAdmin()?'<button type="button" class="btn ghost small danger" data-chat-delete="'+m.id+'">Löschen</button><button type="button" class="btn ghost small" data-chat-mute="'+m.user_id+'">Timeout</button><button type="button" class="btn ghost small danger" data-chat-ban="'+m.user_id+'">Sperren</button>':"";
+  return '<article class="chat-message" data-message-id="'+m.id+'"><div class="chat-message-head"><span class="who">'+esc(name)+roleBadges(m.profiles?.roles)+badge(m.profiles?.verified)+'</span><span class="when">'+dateTime(m.created_at)+'</span><div class="chat-actions">'+report+moderation+'</div></div><p>'+esc(m.message)+'</p></article>';
+}
 async function renderChat() {
-  const {data:chatSetting}=await db.from("chat_settings").select("mode,slow_seconds").eq("id",1).maybeSingle();
-  const messages = await db.from("chat_messages")
-    .select("id,user_id,message,created_at")
-    .is("deleted_at",null).order("created_at",{ascending:false}).limit(100);
-  if (messages.error) throw messages.error;
-
+  const {data:chatSetting,error:settingError}=await db.from("chat_settings").select("mode,slow_seconds").eq("id",1).maybeSingle();
+  if(settingError)console.warn("Chat settings unavailable:",settingError.message);
+  const messages=await db.from("chat_messages").select("id,user_id,message,created_at").is("deleted_at",null).order("created_at",{ascending:false}).limit(100);
+  if(messages.error)throw messages.error;
   const rows=(messages.data??[]).reverse();
   const ids=[...new Set(rows.map(m=>m.user_id).filter(Boolean))];
   let profilesById=new Map();
-  let rolesById=new Map();
   if(ids.length){
     const {data:profilesData,error:profilesError}=await db.from("profiles").select("id,username,display_name,verified").in("id",ids);
-    const {data:roleRows}=await db.from("user_roles").select("user_id,roles(name,display_name,priority)").in("user_id",ids);
+    const {data:roleRows,error:roleError}=await db.from("user_roles").select("user_id,roles(name,display_name,priority)").in("user_id",ids);
+    if(profilesError)throw profilesError;
+    if(roleError)console.warn("Chat role lookup failed:",roleError.message);
+    const rolesById=new Map();
     (roleRows??[]).forEach(r=>{if(!rolesById.has(r.user_id))rolesById.set(r.user_id,[]);if(r.roles)rolesById.get(r.user_id).push(r.roles);});
-    if(profilesError) console.warn("Chat profile lookup failed:",profilesError.message);
     profilesById=new Map((profilesData??[]).map(p=>[p.id,{...p,roles:rolesById.get(p.id)||[]}]));
   }
   lastChatMessages=rows.map(m=>({...m,profiles:profilesById.get(m.user_id)||null}));
-  const items=lastChatMessages.map(m=>`
-    <article class="chat-message">
-      <div><span class="who">${esc(m.profiles?.display_name||m.profiles?.username||"Player")}${roleBadges(m.profiles?.roles)}${badge(m.profiles?.verified)}</span><span class="when">${dateTime(m.created_at)}</span>
-      ${currentUser && currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':""}${isAdmin()?'<button class="btn ghost small danger" data-chat-delete="'+m.id+'">Löschen</button><button class="btn ghost small" data-chat-mute="'+m.user_id+'">Timeout</button><button class="btn ghost small danger" data-chat-ban="'+m.user_id+'">Sperren</button>':""}</div>
-      <p>${esc(m.message)}</p>
-    </article>
-  `).join("");
-  const mode=chatSetting?.mode||"normal";const modeLabel=mode==="admin"?"Nur Admins":mode==="media"?"Media-Modus":mode==="slow"?"Slow Mode":"Normal";const modeNotice='<div class="notice chat-mode-notice"><strong>Chat-Modus: '+modeLabel+'</strong>'+(mode==="slow"?' · '+number(chatSetting?.slow_seconds||5)+' Sekunden zwischen deinen Nachrichten':"")+'</div>';
-  return pageHead("COMMUNITY","Globaler Chat","Schreib mit der KRAKE Community. Chat-Regeln gelten für alle Mitglieder.")+modeNotice+
-    '<section class="card"><div class="chat-window" id="chat-window">'+(items||empty("Noch keine Nachrichten. Starte die Unterhaltung!"))+'</div>'+
+  const items=lastChatMessages.map(chatMessageMarkup).join("");
+  const mode=chatSetting?.mode||"normal";
+  const modeLabel=mode==="admin"?"Nur Admins":mode==="media"?"Media-Modus":mode==="slow"?"Slow Mode":"Normal";
+  const modeNotice='<div class="notice chat-mode-notice"><strong>Chat-Modus: '+modeLabel+'</strong>'+(mode==="slow"?' · '+number(chatSetting?.slow_seconds||5)+' Sekunden zwischen deinen Nachrichten':"")+'</div>';
+  return pageHead("COMMUNITY","Globaler Chat","Schreib mit der KRAKE Community. Chat-Regeln gelten für alle Mitglieder.")+
+    modeNotice+'<section class="card"><div class="chat-window" id="chat-window">'+(items||empty("Noch keine Nachrichten. Starte die Unterhaltung!"))+'</div>'+
     (currentUser?'<form id="chat-form" class="chat-compose"><input class="input" id="chat-input" maxlength="2000" placeholder="Nachricht schreiben …" required><button class="btn" type="submit">Senden</button></form>':'<div class="notice" style="margin-top:12px">Zum Schreiben bitte <button class="btn small" data-route="login">anmelden</button>.</div>')+
     '<p class="form-note">Nachrichten werden moderiert. Melde problematische Inhalte über „Melden“.</p></section>';
 }
+
 function placementRP(rank){const points=[100,75,60,50,45,40,35,30,25,20];return points[rank-1]??15;}
 function leaderboardSort(a,b){if(a.bestTime!==null&&b.bestTime!==null&&a.bestTime!==b.bestTime)return a.bestTime-b.bestTime;if(a.bestTime!==null&&b.bestTime===null)return -1;if(a.bestTime===null&&b.bestTime!==null)return 1;const s=Number(b.score||0)-Number(a.score||0);return s!==0?s:Number(b.rounds||0)-Number(a.rounds||0);}
 function buildLeaderboardGroups(games,results){const groups=new Map((games??[]).map(g=>[g.id,new Map()]));for(const r of results??[]){const p=groups.get(r.minigame_id);if(!p)continue;const cur=p.get(r.user_id);const time=Number(r.time_ms)>0?Number(r.time_ms):null;if(!cur)p.set(r.user_id,{...r,rounds:1,bestTime:time});else{cur.rounds++;if(time!==null&&(cur.bestTime===null||time<cur.bestTime))cur.bestTime=time;if(Number(r.score||0)>Number(cur.score||0))cur.score=r.score;if(r.profiles)cur.profiles=r.profiles;}}const rpByUser=new Map();for(const g of games??[]){[...(groups.get(g.id)||new Map()).values()].sort(leaderboardSort).slice(0,25).forEach((p,i)=>{p.placement=i+1;p.placementRP=placementRP(i+1);rpByUser.set(p.user_id,(rpByUser.get(p.user_id)||0)+p.placementRP);});}return {groups,rpByUser};}
