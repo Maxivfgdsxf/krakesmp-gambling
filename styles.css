@@ -139,3 +139,5 @@ textarea{min-height:110px;resize:vertical}
 @keyframes toast-in{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
 @media(max-width:900px){.hero{grid-template-columns:1fr}.grid.four{grid-template-columns:repeat(2,minmax(0,1fr))}.hero{min-height:auto}.hero-copy{padding:20px 0}.page-wrap{padding-top:30px}}
 @media(max-width:620px){.topbar{height:66px;padding:0 13px}.brand{font-size:11px;letter-spacing:.14em}.brand-logo{width:36px;height:36px}.account-chip{max-width:105px;font-size:10px}.page-wrap{width:calc(100% - 26px);padding:25px 0 60px}.hero h1{font-size:54px}.lead{font-size:15px}.grid,.grid.two,.grid.four,.form-grid{grid-template-columns:1fr}.card{padding:17px}.hero-panel{padding:18px}.crest-orb{height:190px}.chat-compose{grid-template-columns:1fr}.section-head{align-items:start;flex-direction:column}.auth-card{padding:20px;margin:18px auto}.panel-footer{align-items:flex-start;flex-direction:column}}
+
+.kraken-crest{width:25px;height:25px;display:block;filter:drop-shadow(0 0 8px #ef344966)}.crest-orb .kraken-crest{width:118px;height:118px;filter:drop-shadow(0 0 24px #f22e4e66)}.brand-logo{display:grid;place-items:center}
