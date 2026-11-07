@@ -330,7 +330,7 @@ async function renderAdmin() {
   if(!isAdmin())return pageHead("RESTRICTED","Kein Zugriff","Dein Account besitzt keine Admin-Berechtigung.")+'<div class="card">'+empty("Das Admin Panel ist serverseitig geschützt.")+'</div>';
   return pageHead("CONTROL CENTER","Admin Panel","Serverseitig abgesicherte Verwaltung und Audit-Protokoll.")+
     '<section class="card"><div class="admin-tabs">'+[
-      ["overview","Dashboard"],["players","Players"],["verifications","Minecraft"],["applications","Bewerbungen"],["building","Building"],["market","Market"],["chat","Chat Reports"],["roles","Rollen"],["audit","Audit Logs"],["maintenance","Maintenance"],["console","Admin Console"]
+      ["overview","Dashboard"],["players","Players"],["bans","Bans"],["verifications","Minecraft"],["applications","Bewerbungen"],["building","Building"],["market","Market"],["chat","Chat Reports"],["roles","Rollen"],["audit","Audit Logs"],["maintenance","Maintenance"],["console","Admin Console"]
     ].map(([k,v])=>'<button data-admin-tab="'+k+'" class="'+(adminSection===k?"active":"")+'">'+v+'</button>').join("")+'</div><div id="admin-content" class="admin-layout">'+empty("Bereich wird geladen …")+'</div></section>';
 }
 
@@ -511,6 +511,9 @@ async function loadAdminSection(section) {
       const {data,error}=await db.from("profiles").select("id,username,display_name,verified,created_at").order("created_at",{ascending:false}).limit(100);if(error)throw error;
       const rows=(data??[]).map(p=>'<tr><td><strong>'+esc(p.username)+badge(p.verified)+'</strong></td><td>'+esc(p.display_name||"")+'</td><td>'+dateTime(p.created_at)+'</td><td><button class="btn small danger" data-player-action="ban" data-user="'+p.id+'">Bannen</button> <button class="btn small secondary" data-player-action="mute" data-user="'+p.id+'">Muten</button> <button class="btn small ghost" data-player-action="password" data-user="'+p.id+'">Passwort reset</button></td></tr>').join("");
       node.innerHTML='<div class="card"><h2>Spieler verwalten</h2><div class="table-wrap"><table><thead><tr><th>Username</th><th>Anzeigename</th><th>Erstellt</th><th>Aktionen</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
+    } else if(section==="bans"){
+      const {data,error}=await db.from("bans").select("id,user_id,reason,starts_at,expires_at,profiles(username)").eq("active",true).order("starts_at",{ascending:false}).limit(100);if(error)throw error;
+      node.innerHTML='<div class="card"><h2>Aktive Sperren</h2><div class="list">'+((data??[]).map(b=>'<article class="list-item"><div class="item-head"><strong>'+esc(b.profiles?.username||b.user_id)+'</strong><span class="pill red">GESPERRT</span></div><p>'+esc(b.reason)+'</p><div class="inline-meta">Seit '+dateTime(b.starts_at)+' · Ende: '+(b.expires_at?dateTime(b.expires_at):"Unbefristet")+'</div><div class="action-group"><button class="btn small secondary" data-unban="'+b.user_id+'">Entbannen</button></div></article>').join("")||empty("Keine aktiven Sperren."))+'</div></div>';
     } else if(section==="verifications"){
       const {data,error}=await db.from("verification_requests").select("id,user_id,minecraft_name,status,requested_at,profiles(username)").eq("status","pending").order("requested_at");if(error)throw error;
       node.innerHTML='<div class="card"><h2>Offene Minecraft-Verifizierungen</h2><div class="list">'+((data??[]).map(v=>'<article class="list-item"><div class="item-head"><strong>'+esc(v.profiles?.username||v.user_id)+'</strong><span class="pill red">pending</span></div><p>Minecraft: <strong>'+esc(v.minecraft_name)+'</strong></p><div class="inline-meta">'+dateTime(v.requested_at)+'</div><div class="action-group"><button class="btn small" data-verify="yes" data-id="'+v.id+'">Verifizieren</button><button class="btn small danger" data-verify="no" data-id="'+v.id+'">Ablehnen</button></div></article>').join("")||empty("Keine offenen Anträge."))+'</div></div>';
@@ -540,8 +543,14 @@ async function loadAdminSection(section) {
       const {data,error}=await db.from("market_items").select("id,symbol,name,active").order("symbol");if(error)throw error;
       node.innerHTML='<div class="card"><h2>Virtuelle Market-Preise</h2><div class="list">'+((data??[]).map(item=>'<form class="list-item market-admin-form" data-item="'+item.id+'"><div class="item-head"><strong>'+esc(item.name)+' · '+esc(item.symbol)+'</strong><span class="pill">'+(item.active?"aktiv":"inaktiv")+'</span></div><div class="form-grid"><div class="field"><label>Neuer Preis in ◆</label><input class="input" name="price" type="number" min="0" step="1" required></div><div class="field"><label>Änderungsgrund</label><input class="input" name="reason" maxlength="200" placeholder="Marktanpassung"></div></div><button class="btn small">Preis speichern</button></form>').join("")||empty("Keine Assets angelegt."))+'</div></div>';
     } else if(section==="chat"){
-      const {data,error}=await db.from("chat_reports").select("id,message_id,reporter_user_id,reason,status,created_at").order("created_at",{ascending:false}).limit(50);if(error)throw error;
-      node.innerHTML='<div class="card"><h2>Chat Reports</h2><div class="list">'+((data??[]).map(r=>'<article class="list-item"><div class="item-head"><strong>Report #'+r.id+'</strong><span class="pill">'+esc(r.status)+'</span></div><p>'+esc(r.reason)+'</p><div class="inline-meta">Message #'+esc(r.message_id)+' · '+dateTime(r.created_at)+'</div><div class="action-group"><button class="btn small secondary" data-report-status="resolved" data-id="'+r.id+'">Erledigt</button><button class="btn small danger" data-delete-message="'+r.message_id+'">Nachricht löschen</button><button class="btn small ghost" data-report-status="dismissed" data-id="'+r.id+'">Dismiss</button></div></article>').join("")||empty("Keine Reports vorhanden."))+'</div></div>';
+      const [reportResult,messageResult]=await Promise.all([
+        db.from("chat_reports").select("id,message_id,reporter_user_id,reason,status,created_at").order("created_at",{ascending:false}).limit(50),
+        db.from("chat_messages").select("id,user_id,message,created_at,profiles(username)").is("deleted_at",null).order("created_at",{ascending:false}).limit(40)
+      ]);
+      if(reportResult.error)throw reportResult.error;if(messageResult.error)throw messageResult.error;
+      const reportCards=(reportResult.data??[]).map(r=>'<article class="list-item"><div class="item-head"><strong>Report #'+r.id+'</strong><span class="pill">'+esc(r.status)+'</span></div><p>'+esc(r.reason)+'</p><div class="inline-meta">Message #'+esc(r.message_id)+' · '+dateTime(r.created_at)+'</div><div class="action-group"><button class="btn small secondary" data-report-status="resolved" data-id="'+r.id+'">Erledigt</button><button class="btn small danger" data-delete-message="'+r.message_id+'">Nachricht löschen</button><button class="btn small ghost" data-report-status="dismissed" data-id="'+r.id+'">Dismiss</button></div></article>').join("");
+      const messageCards=(messageResult.data??[]).map(m=>'<article class="list-item"><div class="item-head"><strong>'+esc(m.profiles?.username||m.user_id)+'</strong><span class="inline-meta">'+dateTime(m.created_at)+'</span></div><p>'+esc(m.message)+'</p><div class="action-group"><button class="btn small danger" data-delete-message="'+m.id+'">Nachricht löschen</button></div></article>').join("");
+      node.innerHTML='<div class="grid two"><div class="card"><h2>Offene Meldungen</h2><div class="list">'+(reportCards||empty("Keine Reports vorhanden."))+'</div></div><div class="card"><h2>Letzte Chat-Nachrichten</h2><div class="list">'+(messageCards||empty("Noch keine Nachrichten."))+'</div></div></div>';
     } else if(section==="roles"){
       const {data:users,error}=await db.from("profiles").select("id,username").order("username").limit(100);if(error)throw error;
       node.innerHTML='<div class="card"><h2>Rolle zuweisen</h2><form id="role-form" class="form-grid"><div class="field"><label>Spieler</label><select name="user_id">'+(users??[]).map(u=>'<option value="'+u.id+'">'+esc(u.username)+'</option>').join("")+'</select></div><div class="field"><label>Rolle</label><select name="role">'+["user","verified","helper","moderator","media","admin"].map(r=>'<option value="'+r+'">'+r+'</option>').join("")+'</select></div><button class="btn">Rolle zuweisen</button></form><p class="form-note">Rollen werden zusätzlich serverseitig durch Permissions kontrolliert.</p></div>';
@@ -577,6 +586,11 @@ function wireAdminSection(section) {
           await authFunction({action:"admin_reset_password",user_id:id,new_password:newPassword});
         }
         toast("Spieler-Aktion abgeschlossen.","success");await loadAdminSection(section);
+      }
+      if(button.dataset.unban){
+        if(!confirm("Diesen Spieler wirklich entbannen?"))return;
+        await callAdmin("unban",{user_id:button.dataset.unban});
+        toast("Spieler wurde entbannt.","success");await loadAdminSection(section);
       }
       if(button.dataset.verify){
         await callAdmin("verify",{request_id:Number(button.dataset.id),approve:button.dataset.verify==="yes",note:"Reviewed by staff"});
