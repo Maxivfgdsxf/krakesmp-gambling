@@ -632,3 +632,9 @@ body{background:radial-gradient(circle at 50% -12%,#3a0915 0,#14070c 30%,#080609
 .drawer.open{pointer-events:auto!important}
 .drawer-panel{z-index:101!important}
 .drawer-backdrop{z-index:100!important}
+
+/* BRAND RED FIX */
+.brand span:last-child,
+.brand .brand-name,
+.brand .smp,
+.brand-logo + span{color:#ff243f!important;text-shadow:0 0 18px #ff243f55!important}
