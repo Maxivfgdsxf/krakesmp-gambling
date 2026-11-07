@@ -66,6 +66,7 @@ create table if not exists public.market_watchlist(
 
 create index if not exists idx_friendships_addressee_status on public.friendships(addressee_id,status);
 create index if not exists idx_friendships_requester_status on public.friendships(requester_id,status);
+create unique index if not exists idx_friendships_active_pair on public.friendships(least(requester_id,addressee_id),greatest(requester_id,addressee_id)) where status in('pending','accepted');
 create index if not exists idx_notifications_user_created on public.notifications(user_id,created_at desc);
 create index if not exists idx_notifications_actor_id on public.notifications(actor_id);
 create index if not exists idx_player_quests_user_period on public.player_quests(user_id,period_start);
