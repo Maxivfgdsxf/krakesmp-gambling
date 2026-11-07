@@ -798,3 +798,64 @@ body{background:radial-gradient(circle at 50% -12%,#3a0915 0,#14070c 30%,#080609
   .home-dashboard-grid>.card{padding:16px}
   .leaderboard-tab{flex:1 1 auto}
 }
+
+
+/* Market item artwork: hand-built Minecraft-style SVG artefacts */
+.market-card{grid-template-columns:158px minmax(0,1fr)!important}
+.market-art{
+  display:grid!important;
+  place-items:center!important;
+  position:relative!important;
+  min-height:280px!important;
+  padding:14px!important;
+  isolation:isolate;
+  overflow:hidden!important;
+  background:radial-gradient(ellipse at 50% 43%,#6d182c88 0,transparent 58%),linear-gradient(145deg,#1b0b12,#09070b)!important;
+  border-right:1px solid #742638!important;
+}
+.market-art:before{
+  content:"";
+  position:absolute;
+  width:116px;height:116px;
+  border:1px solid #ff536544;
+  border-radius:50%;
+  box-shadow:0 0 34px #ff1b4530,inset 0 0 25px #ff1b4512;
+  pointer-events:none;
+}
+.market-art:after{
+  content:"";
+  position:absolute;
+  inset:35px 18px;
+  border:1px solid #ff53652a;
+  border-radius:24px;
+  transform:rotate(45deg);
+  pointer-events:none;
+}
+.market-art .market-item-svg{
+  display:block;
+  position:relative;
+  z-index:2;
+  width:100%;
+  max-width:190px;
+  height:auto;
+  overflow:visible;
+  filter:drop-shadow(0 13px 13px #000b);
+}
+.market-art-SKELETON{background:radial-gradient(ellipse at 50% 42%,#d57a3140 0,transparent 58%),linear-gradient(145deg,#171b23,#08090d)!important}
+.market-art-ELYTRA{background:radial-gradient(ellipse at 50% 42%,#d6b98c35 0,transparent 60%),linear-gradient(145deg,#201b17,#09090c)!important}
+.market-art-ELYTRA_ENCH{background:radial-gradient(ellipse at 50% 42%,#7663f866 0,transparent 60%),linear-gradient(145deg,#1c1231,#08090e)!important}
+.market-art-EGAPPLE{background:radial-gradient(ellipse at 50% 42%,#ffcc4b55 0,transparent 58%),linear-gradient(145deg,#21170c,#09080a)!important}
+@media(max-width:760px){
+  .market-card{grid-template-columns:126px minmax(0,1fr)!important}
+  .market-art{min-height:250px!important;padding:8px!important}
+  .market-art .market-item-svg{width:120px;max-width:100%}
+  .market-card-body{min-width:0;padding:16px!important}
+}
+@media(max-width:480px){
+  .market-card{grid-template-columns:108px minmax(0,1fr)!important}
+  .market-art{min-height:238px!important;padding:5px!important}
+  .market-art .market-item-svg{width:108px}
+  .market-card-body{padding:13px!important}
+  .market-price-row{gap:7px;flex-wrap:wrap}
+  .market-price-row strong{font-size:27px}
+}
