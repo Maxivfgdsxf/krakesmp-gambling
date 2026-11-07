@@ -215,7 +215,7 @@ async function renderHome() {
   const [events,announcements,leaders,chats,marketItems] = await Promise.all([
     db.from("events").select("name,description,starts_at,ends_at").eq("active",true).limit(1),
     db.from("announcements").select("title,message,created_at").eq("active",true).order("created_at",{ascending:false}).limit(2),
-    db.from("player_statistics").select("user_id,rating,wins,games_played,total_score,profiles(username,display_name,verified)").order("rating",{ascending:false}).limit(3),
+    Promise.all([db.from("minigames").select("id,name").eq("active",true),db.from("minigame_results").select("minigame_id,user_id,score,time_ms,created_at,profiles(username,display_name,verified)").order("created_at",{ascending:false}).limit(5000)]),
     db.from("chat_messages").select("id,user_id,message,created_at,profiles(username,display_name,verified)").is("deleted_at",null).order("created_at",{ascending:false}).limit(3),
     db.from("market_items").select("id,symbol,name").eq("active",true).order("symbol").limit(3),
   ]);
@@ -225,8 +225,7 @@ async function renderHome() {
   const event=events.data?.[0];
   const hello=profile?.display_name||profile?.username||"Spieler";
   const announcementHtml=(announcements.data??[]).map(a=>'<article class="list-item"><div class="item-title">'+esc(a.title)+'</div><p>'+esc(a.message)+'</p><div class="inline-meta">'+dateTime(a.created_at)+'</div></article>').join("");
-  const leaderHtml=(leaders.data??[]).map((p,i)=>'<div class="leader-row"><span class="leader-rank">'+(i+1)+'</span><span class="leader-avatar">♟</span><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong><span>'+number(p.rating)+' RP</span></div>').join("");
-  const chatHtml=(chats.data??[]).map(m=>'<div class="home-chat-row"><strong>'+esc(m.profiles?.display_name||m.profiles?.username||"Player")+'</strong><span>'+dateTime(m.created_at)+'</span><p>'+esc(m.message)+'</p></div>').join("");
+  const homeGames=leaders?.[0]?.data||[];const homeResults=leaders?.[1]?.data||[];const homeLb=buildLeaderboardGroups(homeGames,homeResults);const homePlayers=[...new Set(homeResults.map(r=>r.user_id))].map(user_id=>{const r=homeResults.find(x=>x.user_id===user_id);return {user_id,profiles:r?.profiles};}).sort((a,b)=>(homeLb.rpByUser.get(b.user_id)||0)-(homeLb.rpByUser.get(a.user_id)||0)).slice(0,3);const leaderHtml=homePlayers.map((p,i)=>'<div class="leader-row"><span class="leader-rank">'+(i+1)+'</span><span class="leader-avatar">♟</span><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong><span>'+number(homeLb.rpByUser.get(p.user_id)||0)+' RP</span></div>').join("");  const chatHtml=(chats.data??[]).map(m=>'<div class="home-chat-row"><strong>'+esc(m.profiles?.display_name||m.profiles?.username||"Player")+'</strong><span>'+dateTime(m.created_at)+'</span><p>'+esc(m.message)+'</p></div>').join("");
   const marketHtml=(marketItems.data??[]).map(m=>'<div class="market-mini-row"><span class="market-mini-icon">◆</span><div><strong>'+esc(m.name)+'</strong><small>'+esc(m.symbol)+'</small></div></div>').join("");
   return `
     <section class="home-hero">
@@ -329,12 +328,50 @@ async function renderChat() {
     (currentUser?'<form id="chat-form" class="chat-compose"><input class="input" id="chat-input" maxlength="2000" placeholder="Nachricht schreiben …" required><button class="btn" type="submit">Senden</button></form>':'<div class="notice" style="margin-top:12px">Zum Schreiben bitte <button class="btn small" data-route="login">anmelden</button>.</div>')+
     '<p class="form-note">Nachrichten werden moderiert. Melde problematische Inhalte über „Melden“.</p></section>';
 }
+function placementRP(rank){
+  const points=[100,75,60,50,45,40,35,30,25,20];
+  return points[rank-1] ?? 15;
+}
+function leaderboardSort(a,b){
+  if(a.bestTime!==null && b.bestTime!==null && a.bestTime!==b.bestTime) return a.bestTime-b.bestTime;
+  if(a.bestTime!==null && b.bestTime===null) return -1;
+  if(a.bestTime===null && b.bestTime!==null) return 1;
+  const scoreDiff=Number(b.score||0)-Number(a.score||0);
+  if(scoreDiff!==0) return scoreDiff;
+  return Number(b.rounds||0)-Number(a.rounds||0);
+}
+function buildLeaderboardGroups(games,results){
+  const groups=new Map((games??[]).map(g=>[g.id,new Map()]));
+  for(const r of (results??[])){
+    const players=groups.get(r.minigame_id);
+    if(!players) continue;
+    const current=players.get(r.user_id);
+    const time=Number.isFinite(Number(r.time_ms)) && Number(r.time_ms)>0 ? Number(r.time_ms) : null;
+    if(!current) players.set(r.user_id,{...r,rounds:1,bestTime:time});
+    else {
+      current.rounds++;
+      if(time!==null && (current.bestTime===null || time<current.bestTime)) current.bestTime=time;
+      if(Number(r.score||0)>Number(current.score||0)) current.score=r.score;
+      if(new Date(r.created_at)>new Date(current.created_at)) current.created_at=r.created_at;
+      if(r.profiles) current.profiles=r.profiles;
+    }
+  }
+  const rpByUser=new Map();
+  for(const g of (games??[])){
+    const rows=[...(groups.get(g.id)||new Map()).values()].sort(leaderboardSort).slice(0,25);
+    rows.forEach((p,i)=>{
+      p.placement=i+1;
+      p.placementRP=placementRP(i+1);
+      rpByUser.set(p.user_id,(rpByUser.get(p.user_id)||0)+p.placementRP);
+    });
+  }
+  return {groups,rpByUser};
+}
+
 async function renderLeaderboards() {
   const {data:games,error:gamesError}=await db.from("minigames").select("id,slug,name,description").eq("active",true).order("name");
   if(gamesError) throw gamesError;
-  const {data:results,error:resultsError}=await db.from("minigame_results")
-    .select("minigame_id,user_id,score,time_ms,won,created_at,profiles(username,display_name,verified)")
-    .order("created_at",{ascending:false}).limit(5000);
+  const {data:results,error:resultsError}=await db.from("minigame_results").select("minigame_id,user_id,score,time_ms,won,created_at,profiles(username,display_name,verified)").order("created_at",{ascending:false}).limit(5000);
   if(resultsError) throw resultsError;
   const lbIds=[...new Set((results??[]).map(r=>r.user_id).filter(Boolean))];
   const lbRoles=new Map();
@@ -343,55 +380,24 @@ async function renderLeaderboards() {
     (roleRows??[]).forEach(r=>{if(!lbRoles.has(r.user_id))lbRoles.set(r.user_id,[]);if(r.roles)lbRoles.get(r.user_id).push(r.roles);});
   }
   (results??[]).forEach(r=>{r.profiles={...(r.profiles||{}),roles:lbRoles.get(r.user_id)||[]};});
-
-  const groups=new Map((games??[]).map(g=>[g.id,new Map()]));
-  for(const r of (results??[])){
-    const players=groups.get(r.minigame_id);
-    if(!players) continue;
-    const current=players.get(r.user_id);
-    const time=Number.isFinite(Number(r.time_ms)) && Number(r.time_ms)>0 ? Number(r.time_ms) : null;
-    if(!current){
-      players.set(r.user_id,{...r,rounds:1,bestTime:time});
-    }else{
-      current.rounds++;
-      if(time!==null && (current.bestTime===null || time<current.bestTime)) current.bestTime=time;
-      if(Number(r.score||0)>Number(current.score||0)) current.score=r.score;
-      if(new Date(r.created_at)>new Date(current.created_at)) current.created_at=r.created_at;
-      if(r.profiles) current.profiles=r.profiles;
-    }
-  }
-
-  const formatTime=(ms)=>{
-    if(ms===null || ms===undefined) return "—";
-    const n=Math.max(0,Math.round(Number(ms)));
-    return n>=1000 ? (n/1000).toFixed(2)+" s" : n+" ms";
-  };
-
+  const {groups,rpByUser}=buildLeaderboardGroups(games,results);
+  const formatTime=(ms)=>{if(ms===null||ms===undefined)return "—";const n=Math.max(0,Math.round(Number(ms)));return n>=1000?(n/1000).toFixed(2)+" s":n+" ms";};
+  const globalPlayers=new Map();
+  for(const g of (games??[])) for(const p of (groups.get(g.id)||new Map()).values()) if(!globalPlayers.has(p.user_id)) globalPlayers.set(p.user_id,p);
+  const globalRows=[...globalPlayers.values()].sort((a,b)=>(rpByUser.get(b.user_id)||0)-(rpByUser.get(a.user_id)||0)).slice(0,25);
+  const globalBody=globalRows.map((p,i)=>'<tr><td><span class="rank '+(i===0?"gold":i===1?"silver":i===2?"bronze":"")+'">'+(i+1)+'</span></td><td><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong> '+badge(p.profiles?.verified)+' '+roleBadges(p.profiles?.roles)+'</td><td><strong>'+number(rpByUser.get(p.user_id)||0)+' RP</strong></td></tr>').join("");
   const cards=(games??[]).map((g,index)=>{
-    const players=groups.get(g.id)||new Map();
-    const rows=[...players.values()].sort((a,b)=>{
-      if(a.bestTime!==null && b.bestTime!==null) return a.bestTime-b.bestTime;
-      if(a.bestTime!==null) return -1;
-      if(b.bestTime!==null) return 1;
-      return Number(b.score||0)-Number(a.score||0);
-    }).slice(0,25);
-
-    const body=rows.map((p,i)=>{
-      const player=esc(p.profiles?.display_name||p.profiles?.username||"Player");
-      const admin=roleBadges(p.profiles?.roles);
-      return '<tr><td><span class="rank '+(i===0?"gold":i===1?"silver":i===2?"bronze":"")+'">'+(i+1)+'</span></td><td><strong>'+player+'</strong> '+badge(p.profiles?.verified)+' '+admin+'</td><td><strong>'+formatTime(p.bestTime)+'</strong></td><td>'+number(p.rounds)+'</td></tr>';
-    }).join("");
-
-    return '<section class="leaderboard-game card" data-board="'+esc(g.slug)+'" '+(index===0?"":"hidden")+'><div class="section-head"><div><div class="eyebrow">KRAKE COMPETITIVE</div><h2>'+esc(g.name)+' Leaderboard</h2><p>'+esc(g.description||"Spieler-Rankings")+'</p></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>Bestzeit</th><th>Gespielte Runden</th></tr></thead><tbody>'+(body||'<tr><td colspan="4">Noch keine Ergebnisse.</td></tr>')+'</tbody></table></div></section>';
+    const rows=[...(groups.get(g.id)||new Map()).values()].sort(leaderboardSort).slice(0,25);
+    const body=rows.map((p,i)=>'<tr><td><span class="rank '+(i===0?"gold":i===1?"silver":i===2?"bronze":"")+'">'+(i+1)+'</span></td><td><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong> '+badge(p.profiles?.verified)+' '+roleBadges(p.profiles?.roles)+'</td><td><strong>'+formatTime(p.bestTime)+'</strong></td><td><strong>'+number(p.placementRP)+' RP</strong></td><td>'+number(p.rounds)+'</td></tr>').join("");
+    return '<section class="leaderboard-game card" data-board="'+esc(g.slug)+'" '+(index===0?"":"hidden")+'><div class="section-head"><div><div class="eyebrow">KRAKE COMPETITIVE</div><h2>'+esc(g.name)+' Leaderboard</h2><p>'+esc(g.description||"Spieler-Rankings")+'</p></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>Bestzeit</th><th>RP</th><th>Gespielte Runden</th></tr></thead><tbody>'+(body||'<tr><td colspan="5">Noch keine Ergebnisse.</td></tr>')+'</tbody></table></div></section>';
   }).join("");
-
   const tabs=(games??[]).map((g,i)=>'<button class="leaderboard-tab '+(i===0?"active":"")+'" data-leaderboard-game="'+esc(g.slug)+'">'+esc(g.name)+'</button>').join("");
-  return pageHead("COMPETITIVE","Leaderboards","Pro Minigame siehst du nur deine beste Zeit und wie viele Runden gespielt wurden.")+
-    '<section class="card leaderboard-shell"><div class="leaderboard-tabs">'+tabs+'</div><div class="leaderboard-panels">'+cards+'</div></section>';
+  const globalCard='<section class="card leaderboard-global"><div class="section-head"><div><div class="eyebrow">RANKING POINTS</div><h2>Globales RP Ranking</h2><p>RP werden automatisch aus den Platzierungen in jedem Minigame berechnet.</p></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>Gesamt-RP</th></tr></thead><tbody>'+(globalBody||'<tr><td colspan="3">Noch keine Platzierungen.</td></tr>')+'</tbody></table></div></section>';
+  return pageHead("COMPETITIVE","Leaderboards","Platzierung = RP. Je besser deine Platzierung in den Minigames, desto mehr RP sammelst du.")+globalCard+'<section class="card leaderboard-shell"><div class="leaderboard-tabs">'+tabs+'</div><div class="leaderboard-panels">'+cards+'</div></section>';
 }
 async function renderMarket() {
   const [items,prices]=await Promise.all([
-    db.from("market_items").select("id,symbol,name,description").eq("active",true).order("name"),
+    db.from("market_items").select("id,symbol,name,description,stock").eq("active",true).order("name"),
     db.from("market_prices").select("item_id,price,created_at").order("created_at",{ascending:true}).limit(1000)
   ]);
   if(items.error)throw items.error;if(prices.error)throw prices.error;
@@ -405,7 +411,7 @@ async function renderMarket() {
     const change=first ? ((Number(latest?.price||0)-Number(first))/Number(first))*100 : 0;
     const pts=history.slice(-12).map((p,i)=>(i*12)+","+(50-Math.max(-42,Math.min(42,((Number(p.price)-Number(first))/(Number(first)||1))*42)))).join(" ");
     const chart=pts ? '<svg class="price-chart" viewBox="0 0 132 60" preserveAspectRatio="none"><polyline points="'+pts+'" fill="none" stroke="currentColor" stroke-width="3" vector-effect="non-scaling-stroke"/></svg>' : "";
-    return '<article class="market-card card"><div class="market-art market-art-'+esc(item.symbol)+'"><span>'+art(item.symbol)+'</span></div><div class="market-card-body"><div class="eyebrow">INGAME MARKET</div><h2>'+esc(item.name)+'</h2><p>'+esc(item.description||"Minecraft Item")+'</p><div class="market-price-row"><strong>'+compactPrice(latest?.price||0)+'</strong><span class="price-change '+(change>=0?"up":"down")+'">'+(change>=0?"+":"")+change.toFixed(1)+'% seit Start</span></div><div class="market-trend">'+chart+'<div><small>Start</small><b>'+compactPrice(first)+'</b></div><div><small>Aktuell</small><b>'+compactPrice(latest?.price||0)+'</b></div></div><button class="btn market-ticket-btn" data-market-ticket="'+item.id+'">Dieses Item anfragen</button></div></article>';
+    return '<article class="market-card card"><div class="market-art market-art-'+esc(item.symbol)+'"><span>'+art(item.symbol)+'</span></div><div class="market-card-body"><div class="eyebrow">INGAME MARKET</div><h2>'+esc(item.name)+'</h2><p>'+esc(item.description||"Minecraft Item")+'</p><div class="market-stock"><span>STOCK</span><strong>'+number(item.stock||0)+'</strong><small>im Lager</small></div><div class="market-price-row"><strong>'+compactPrice(latest?.price||0)+'</strong><span class="price-change '+(change>=0?"up":"down")+'">'+(change>=0?"+":"")+change.toFixed(1)+'% seit Start</span></div><div class="market-trend">'+chart+'<div><small>Start</small><b>'+compactPrice(first)+'</b></div><div><small>Aktuell</small><b>'+compactPrice(latest?.price||0)+'</b></div></div><button class="btn market-ticket-btn" data-market-ticket="'+item.id+'">Dieses Item anfragen</button></div></article>';
   }).join("");
   return pageHead("INGAME MARKET","KRAKE Market","Hier werden echte Ingame-Items gehandelt. Preise setzt du selbst im Admin Panel. Kein Website-Guthaben.")+
     '<div class="market-note"><span>◆</span><div><strong>Preisübersicht</strong><p>Preise werden als Ingame-Werte wie <b>2b</b>, <b>750m</b> oder <b>500k</b> angezeigt. Klick auf ein Item, wenn du es kaufen möchtest – daraus wird direkt ein Ticket für das Team.</p></div></div>'+
@@ -463,14 +469,14 @@ async function renderApplications() {
 
 async function renderProfile() {
   if(!currentUser)return pageHead("ACCOUNT","Profil","Melde dich an, um dein Profil anzusehen.")+'<div class="card">'+empty("Du bist noch nicht angemeldet.")+'<button class="btn" data-route="login">Anmelden</button></div>';
-  const [stats,minecraft,roles]=await Promise.all([
+  const [stats,minecraft,roles,profileGames,profileResults]=await Promise.all([
     db.from("player_statistics").select("*").eq("user_id",currentUser.id).maybeSingle(),
     db.from("minecraft_accounts").select("minecraft_name,verification_status,verified_at").eq("user_id",currentUser.id).maybeSingle(),
-    db.from("user_roles").select("roles(display_name,name)").eq("user_id",currentUser.id)
+    db.from("user_roles").select("roles(display_name,name)").eq("user_id",currentUser.id),db.from("minigames").select("id,name").eq("active",true),db.from("minigame_results").select("minigame_id,user_id,score,time_ms,created_at,profiles(username,display_name,verified)").eq("user_id",currentUser.id).order("created_at",{ascending:false}).limit(5000)
   ]);
-  const roleNames=(roles.data??[]).map(r=>r.roles?.display_name||r.roles?.name).filter(Boolean).join(", ")||"User";
+  const roleNames=(roles.data??[]).map(r=>r.roles?.display_name||r.roles?.name).filter(Boolean).join(", ")||"User";const myRp=buildLeaderboardGroups(profileGames.data||[],profileResults.data||[]).rpByUser.get(currentUser.id)||0;
   return pageHead("PLAYER ID","Profil","Deine KRAKE SMP Community-Identität.")+
-    '<section class="card"><div class="item-head"><div><div class="eyebrow">MEMBER PROFILE</div><h2>'+esc(profile?.display_name||profile?.username||"Player")+badge(profile?.verified)+'</h2><div class="muted">@'+esc(profile?.username||"")+'</div></div><span class="pill red">'+esc(roleNames)+'</span></div><div class="section grid four"><div class="card stat-card"><div class="stat-label">Wins</div><div class="stat-number">'+number(stats.data?.wins)+'</div></div><div class="card stat-card"><div class="stat-label">Games</div><div class="stat-number">'+number(stats.data?.games_played)+'</div></div><div class="card stat-card"><div class="stat-label">Rating</div><div class="stat-number">'+number(stats.data?.rating??1000)+'</div></div></div><div class="section grid two"><div class="list-item"><div class="muted">Minecraft Account</div><strong>'+esc(minecraft.data?.minecraft_name||"Nicht verknüpft")+'</strong><div class="inline-meta">Status: '+esc(minecraft.data?.verification_status||"unverified")+'</div></div><div class="list-item"><div class="muted">Mitglied seit</div><strong>'+dateTime(profile?.created_at)+'</strong><div class="inline-meta">Letzter Login: '+dateTime(profile?.last_login_at)+'</div></div></div><div class="action-row"><button class="btn secondary" data-route="settings">Einstellungen</button><button class="btn ghost" id="logout-btn">Abmelden</button></div></section>';
+    '<section class="card"><div class="item-head"><div><div class="eyebrow">MEMBER PROFILE</div><h2>'+esc(profile?.display_name||profile?.username||"Player")+badge(profile?.verified)+'</h2><div class="muted">@'+esc(profile?.username||"")+'</div></div><span class="pill red">'+esc(roleNames)+'</span></div><div class="section grid four"><div class="card stat-card"><div class="stat-label">Wins</div><div class="stat-number">'+number(stats.data?.wins)+'</div></div><div class="card stat-card"><div class="stat-label">Games</div><div class="stat-number">'+number(stats.data?.games_played)+'</div></div><div class="card stat-card"><div class="stat-label">RP</div><div class="stat-number">'+number(myRp)+'</div></div></div><div class="section grid two"><div class="list-item"><div class="muted">Minecraft Account</div><strong>'+esc(minecraft.data?.minecraft_name||"Nicht verknüpft")+'</strong><div class="inline-meta">Status: '+esc(minecraft.data?.verification_status||"unverified")+'</div></div><div class="list-item"><div class="muted">Mitglied seit</div><strong>'+dateTime(profile?.created_at)+'</strong><div class="inline-meta">Letzter Login: '+dateTime(profile?.last_login_at)+'</div></div></div><div class="action-row"><button class="btn secondary" data-route="settings">Einstellungen</button><button class="btn ghost" id="logout-btn">Abmelden</button></div></section>';
 }
 
 async function renderSettings() {
@@ -853,8 +859,8 @@ async function loadAdminSection(section) {
         return '<article class="list-item"><div class="item-head"><strong>'+esc(o.title)+'</strong><span class="pill">'+esc(o.status)+'</span></div><p>'+esc(o.description)+'</p><div class="inline-meta">Von '+esc(o.profiles?.username||"Player")+' · Budget '+(o.budget===null?"offen":number(o.budget)+" ◆")+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch kein Nachrichtenverlauf.</div>')+'</div><form class="chat-compose" data-admin-building-message="'+o.id+'"><input class="input" name="message" maxlength="2000" placeholder="Private Nachricht an Spieler …" required><button class="btn small">Senden</button></form><div class="action-group">'+["reviewing","accepted","in_progress","completed","rejected"].map(s=>'<button class="btn small '+(s==="rejected"?"danger":"secondary")+'" data-building-status="'+s+'" data-id="'+o.id+'">'+s+'</button>').join("")+'</div></article>';
       }).join("")||empty("Keine Building-Aufträge."))+'</div></div>';
     } else if(section==="market"){
-      const {data,error}=await db.from("market_items").select("id,symbol,name,active").order("symbol");if(error)throw error;
-      node.innerHTML='<div class="card"><h2>Virtuelle Market-Preise</h2><div class="list">'+((data??[]).map(item=>'<form class="list-item market-admin-form" data-item="'+item.id+'"><div class="item-head"><strong>'+esc(item.name)+' · '+esc(item.symbol)+'</strong><span class="pill">'+(item.active?"aktiv":"inaktiv")+'</span></div><div class="form-grid"><div class="field"><label>Neuer Preis (z.B. 2b, 750m, 500k)</label><input class="input" name="price" inputmode="decimal" placeholder="2b" required></div><div class="field"><label>Änderungsgrund</label><input class="input" name="reason" maxlength="200" placeholder="Marktanpassung"></div></div><button class="btn small">Preis speichern</button></form>').join("")||empty("Keine Assets angelegt."))+'</div></div>';
+      const {data,error}=await db.from("market_items").select("id,symbol,name,active,stock").order("symbol");if(error)throw error;
+      node.innerHTML='<div class="card"><h2>Virtuelle Market-Preise</h2><div class="list">'+((data??[]).map(item=>'<form class="list-item market-admin-form" data-item="'+item.id+'"><div class="item-head"><strong>'+esc(item.name)+' · '+esc(item.symbol)+'</strong><span class="pill">'+(item.active?"aktiv":"inaktiv")+'</span></div><div class="form-grid"><div class="field"><label>Neuer Preis (z.B. 2b, 750m, 500k)</label><input class="input" name="price" inputmode="decimal" placeholder="2b" required></div><div class="field"><label>Stock</label><input class="input" name="stock" type="number" min="0" step="1" value="'+item.stock+'"></div><div class="field"><label>Änderungsgrund</label><input class="input" name="reason" maxlength="200" placeholder="Marktanpassung"></div></div><button class="btn small">Preis + Stock speichern</button></form>').join("")||empty("Keine Assets angelegt."))+'</div></div>';
     } else if(section==="market_tickets"){
       const {data,error}=await db.from("market_tickets").select("id,user_id,quantity,message,status,created_at,market_items(name,symbol),profiles(username,display_name)").order("created_at",{ascending:false}).limit(100);
       if(error)throw error;
@@ -877,7 +883,7 @@ async function loadAdminSection(section) {
       node.innerHTML='<div class="card"><h2>Audit Logs</h2><div class="table-wrap"><table><thead><tr><th>Zeit</th><th>Aktion</th><th>Actor</th><th>Target</th><th>Details</th></tr></thead><tbody>'+((data??[]).map(a=>'<tr><td>'+dateTime(a.created_at)+'</td><td>'+esc(a.action)+'</td><td>'+esc(a.actor_user_id)+'</td><td>'+esc(a.target_user_id)+'</td><td>'+esc(JSON.stringify(a.metadata))+'</td></tr>').join("")||'<tr><td colspan="5">Noch keine Aktionen.</td></tr>')+'</tbody></table></div></div>';
     } else if(section==="maintenance"){
       const {data,error}=await db.from("maintenance_windows").select("*").eq("id",1).single();if(error)throw error;
-      node.innerHTML='<div class="card"><h2>Website Maintenance</h2><p class="muted">Bei aktivierter Wartung sehen normale Besucher eine Wartungsseite. Admins können die Seite weiterhin verwalten.</p><form id="maintenance-form" class="form"><label class="item-head"><span>Wartungsmodus</span><input type="checkbox" name="enabled" '+(data.enabled?"checked":"")+'></label><div class="field"><label>Nachricht</label><input class="input" name="message" value="'+esc(data.message)+'"></div><button class="btn">Einstellung speichern</button></form></div>';
+      node.innerHTML='<div class="card"><h2>Website Maintenance</h2><p class="muted">Bei aktivierter Wartung sehen normale Besucher eine Wartungsseite. Admins können die Seite weiterhin verwalten.</p><div class="action-row maintenance-actions"><button type="button" class="btn" data-maintenance-toggle="on">Maintenance AN</button><button type="button" class="btn secondary" data-maintenance-toggle="off">Maintenance OFF</button></div><form id="maintenance-form" class="form"><label class="item-head"><span>Wartungsmodus</span><input type="checkbox" name="enabled" '+(data.enabled?"checked":"")+'></label><div class="field"><label>Nachricht</label><input class="input" name="message" value="'+esc(data.message)+'"></div><button class="btn">Einstellung speichern</button></form></div>';
     } else if(section==="console"){
       node.innerHTML='<div class="card"><h2>Safe Admin Console</h2><p class="muted">Nur freigegebene Website-Befehle. Keine Shell, keine SQL-Konsole.</p><div class="console-command-grid"><button type="button" class="console-command" data-console-command="/maintenance on">Maintenance AN</button><button type="button" class="console-command" data-console-command="/maintenance off">Maintenance AUS</button><button type="button" class="console-command" data-console-command="/announce Server Update|KRAKE SMP Update ist live!">Announcement</button><button type="button" class="console-command" data-console-command="/ban Spieler Regelverstoß">Ban-Vorlage</button><button type="button" class="console-command" data-console-command="/unban Spieler">Unban-Vorlage</button><button type="button" class="console-command" data-console-command="/mute Spieler Chatregel">Mute-Vorlage</button><button type="button" class="console-command" data-console-command="/unmute Spieler">Unmute-Vorlage</button></div><form id="console-form" class="chat-compose"><input class="input" name="command" placeholder="/ban Spieler Regelverstoß" required><button class="btn">Ausführen</button></form><div class="form-note" style="margin-top:12px">Befehle sind klickbar und werden nur als freigegebene Admin-Aktionen ausgeführt.</div><div class="notice" id="console-output" style="margin-top:12px">Warte auf Befehl.</div></div>';
     }
@@ -953,12 +959,13 @@ function wireAdminSection(section) {
   });
   node.querySelectorAll(".market-admin-form").forEach(form=>form.onsubmit=async e=>{
     e.preventDefault();const f=new FormData(form);try{const parsed=parsePrice(f.get("price"));if(!Number.isFinite(parsed)||parsed<0)throw new Error("Ungültiger Preis. Beispiele: 2b, 750m, 500k.");
-      await callAdmin("market_price",{item_id:form.dataset.item,price:parsed,reason:String(f.get("reason")||"")});toast("Preis aktualisiert.","success");form.reset();}catch(error){toast(error.message,"error");}
+      await callAdmin("market_price",{item_id:form.dataset.item,price:parsed,reason:String(f.get("reason")||"")});await callAdmin("market_stock",{item_id:form.dataset.item,stock:Math.max(0,Number(f.get("stock")||0))});toast("Preis + Stock aktualisiert.","success");form.reset();}catch(error){toast(error.message,"error");}
   });
   $("role-form")?.addEventListener("submit",async e=>{
     e.preventDefault();const f=new FormData(e.currentTarget);
     try{await callAdmin("set_role",{user_id:String(f.get("user_id")),role:String(f.get("role"))});toast("Rolle zugewiesen.","success");}catch(error){toast(error.message,"error");}
   });
+  node.querySelectorAll("[data-maintenance-toggle]").forEach(button=>button.addEventListener("click",async()=>{try{const enabled=button.dataset.maintenanceToggle==="on";await callAdmin("maintenance",{enabled,message:"KRAKE SMP wird gewartet."});toast(enabled?"Maintenance ist AN.":"Maintenance ist OFF.","success");await loadAdminSection("maintenance");}catch(error){toast(error.message,"error");}}));
   $("maintenance-form")?.addEventListener("submit",async e=>{
     e.preventDefault();const f=new FormData(e.currentTarget);
     try{await callAdmin("maintenance",{enabled:e.currentTarget.elements.enabled.checked,message:String(f.get("message")||"")});toast("Maintenance-Einstellung gespeichert.","success");}catch(error){toast(error.message,"error");}
