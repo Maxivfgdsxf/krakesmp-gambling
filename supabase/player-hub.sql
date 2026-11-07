@@ -139,6 +139,8 @@ insert into public.achievements(slug,title,description,icon) values
 ('wins_10','Sieger','Gewinne 10 Minigames.','🏆'),
 ('xp_1000','Aufsteiger','Sammle 1.000 XP.','🌟'),
 ('streak_7','Eine Woche dabei','Erreiche eine 7-Tage-Login-Serie.','🔥'),
+('streak_14','Zwei Wochen stark','Erreiche eine 14-Tage-Login-Serie.','💎'),
+('streak_30','KRAKE Legende','Erreiche eine 30-Tage-Login-Serie.','👑'),
 ('first_friend','Nicht allein','Füge deinen ersten Freund hinzu.','🤝')
 on conflict(slug) do nothing;
 insert into public.player_progress(user_id) select id from public.profiles on conflict(user_id) do nothing;
@@ -172,13 +174,14 @@ as $$ declare v_user uuid:=auth.uid(); v_today date:=current_date; v_last date; 
  if v_last=v_today then raise exception 'Deine Tagesbelohnung hast du heute bereits abgeholt.'; end if;
  v_streak:=case when v_last=v_today-1 then v_streak+1 else 1 end;
  v_xp:=50+least(v_streak,30)*5; v_coins:=100+least(v_streak,30)*20;
+ if v_streak=7 then v_xp:=v_xp+100; v_coins:=v_coins+250; elsif v_streak=14 then v_xp:=v_xp+250; v_coins:=v_coins+500; elsif v_streak=30 then v_xp:=v_xp+750; v_coins:=v_coins+1500; end if;
  insert into public.daily_reward_claims(user_id,claim_date,streak,xp_reward,coin_reward) values(v_user,v_today,v_streak,v_xp,v_coins);
  update public.player_progress set current_streak=v_streak,longest_streak=greatest(longest_streak,v_streak),last_daily_claim=v_today,xp=xp+v_xp,level=floor(sqrt((xp+v_xp)::numeric/100))::integer+1,updated_at=now() where user_id=v_user returning xp into v_new_xp;
  update public.user_balances set balance=balance+v_coins,updated_at=now() where user_id=v_user returning balance into v_total;
  if not found then insert into public.user_balances(user_id,balance) values(v_user,v_coins) returning balance into v_total; end if;
  insert into public.currency_transactions(user_id,amount,balance_after,transaction_type,description) values(v_user,v_coins,v_total,'daily_reward','Tagesbelohnung · Serie '||v_streak);
  insert into public.notifications(user_id,kind,title,body,target_route) values(v_user,'daily_reward','Tagesbelohnung erhalten','+'||v_xp||' XP und +'||v_coins||' Coins','dashboard');
- insert into public.user_achievements(user_id,achievement_id) select v_user,id from public.achievements where (slug='streak_7' and v_streak>=7) or (slug='xp_1000' and v_new_xp>=1000) on conflict do nothing;
+ insert into public.user_achievements(user_id,achievement_id) select v_user,id from public.achievements where (slug='streak_7' and v_streak>=7) or (slug='streak_14' and v_streak>=14) or (slug='streak_30' and v_streak>=30) or (slug='xp_1000' and v_new_xp>=1000) on conflict do nothing;
  return jsonb_build_object('streak',v_streak,'xp',v_xp,'coins',v_coins,'total_xp',v_new_xp);
 end; $$;
 
