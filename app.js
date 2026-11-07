@@ -465,8 +465,8 @@ async function renderMarketTickets() {
   if(!currentUser)return pageHead("MARKET","Market Tickets","Melde dich an, um deine Tickets zu sehen.")+'<div class="card">'+empty("Bitte anmelden.")+'</div>';
   const {data,error}=await db.from("market_tickets").select("id,quantity,message,status,created_at,updated_at,market_items(name,symbol)").eq("user_id",currentUser.id).order("created_at",{ascending:false});
   if(error)throw error;
-  const cards=(data??[]).map(t=>'<article class="list-item"><div class="item-head"><strong>'+esc(t.market_items?.name||"Item")+'</strong><span class="pill '+(t.status==="open"?"red":"")+'">'+esc(t.status)+'</span></div><p>Menge: '+number(t.quantity)+' · '+esc(t.message||"Keine Nachricht")+'</p><div class="inline-meta">Ticket #'+t.id+' · '+dateTime(t.created_at)+'</div></article>').join("");
-  return pageHead("MARKET","Deine Market Tickets","Wenn du ein Item anklickst, landet deine Anfrage hier beim Team.")+'<div class="list">'+(cards||empty("Noch keine Market-Tickets."))+'</div>';
+  const cards=(data??[]).map(t=>'<article class="ticket-row" data-ticket-open="'+t.id+'"><div class="ticket-main"><div class="item-head"><strong>'+esc(t.market_items?.name||"Item")+'</strong><span class="pill '+(t.status==="open"?"red":"")+'">'+esc(t.status)+'</span></div><p>'+number(t.quantity)+'× · '+esc(t.message||"Keine Nachricht")+'</p><small>Ticket #'+t.id+' · '+dateTime(t.created_at)+'</small></div><div class="ticket-arrow">›</div></article>').join("");
+  return pageHead("MARKET","Deine Market Tickets","Klick auf ein Ticket, um den Verlauf zu öffnen und mit dem Team zu schreiben.")+'<section class="card"><div class="ticket-list">'+(cards||empty("Noch keine Market-Tickets."))+'</div></section>';
 }
 async function renderImpressum() {
   return pageHead("LEGAL","Impressum","Informationen zum Projekt.")+'<section class="card"><h2>KRAKE SMP</h2><p class="muted">Made by Dev Mundi.</p></section>';
@@ -511,16 +511,41 @@ async function renderPage() {
   if(route==="admin" && isAdmin()) await loadAdminSection(adminSection);
 }
 
+function openMarketTicketCreator(itemId,itemName){
+  const old=$("ticket-create-modal");old?.remove();
+  const modal=document.createElement("div");modal.id="ticket-create-modal";modal.className="krake-modal";
+  modal.innerHTML='<div class="krake-modal-backdrop"></div><div class="krake-modal-card"><button class="modal-close" type="button">×</button><div class="eyebrow">MARKET REQUEST</div><h2>'+esc(itemName)+'</h2><p class="muted">Minecraft-Ingame-Item · Anfrage direkt ans Team</p><form id="ticket-create-form" class="form"><div class="quantity-picker"><button type="button" data-qty="-1">−</button><div><small>MENGE</small><strong id="ticket-qty">1</strong></div><button type="button" data-qty="1">+</button></div><input class="input" id="ticket-message" maxlength="2000" placeholder="Nachricht an das Team (optional)" value="Ich möchte dieses Item kaufen."><div class="action-row"><button type="button" class="btn secondary modal-cancel">Abbrechen</button><button class="btn">Ticket erstellen</button></div></form></div></div>';
+  document.body.appendChild(modal);
+  let qty=1;
+  const close=()=>modal.remove();
+  modal.querySelector(".modal-close").onclick=close;modal.querySelector(".modal-cancel").onclick=close;modal.querySelector(".krake-modal-backdrop").onclick=close;
+  modal.querySelectorAll("[data-qty]").forEach(b=>b.onclick=()=>{qty=Math.max(1,Math.min(999,qty+Number(b.dataset.qty)));$("ticket-qty").textContent=qty;});
+  modal.querySelector("#ticket-create-form").onsubmit=async e=>{e.preventDefault();const message=$("ticket-message").value.trim();const {error}=await db.from("market_tickets").insert({user_id:currentUser.id,item_id:itemId,quantity:qty,message:message.slice(0,2000)});if(error)toast(error.message,"error");else{close();toast("Ticket erstellt. Öffne es jederzeit über Market Tickets.","success");await renderPage();}};
+}
+function openMarketTicket(ticketId){
+  if(!currentUser)return;
+  const old=$("ticket-modal");old?.remove();
+  const modal=document.createElement("div");modal.id="ticket-modal";modal.className="krake-modal";
+  modal.innerHTML='<div class="krake-modal-backdrop"></div><div class="krake-modal-card ticket-modal-card"><button class="modal-close" type="button">×</button><div id="ticket-modal-content"><div class="muted">Ticket wird geladen …</div></div></div>';
+  document.body.appendChild(modal);
+  const close=()=>modal.remove();modal.querySelector(".modal-close").onclick=close;modal.querySelector(".krake-modal-backdrop").onclick=close;
+  (async()=>{
+    const [{data:t,error:te},{data:messages,error:me}]=await Promise.all([
+      db.from("market_tickets").select("id,user_id,quantity,message,status,created_at,market_items(name,symbol)").eq("id",ticketId).maybeSingle(),
+      db.from("market_ticket_messages").select("id,user_id,message,created_at").eq("ticket_id",ticketId).order("created_at")
+    ]);
+    if(te)throw te;if(me)throw me;
+    const ids=[...new Set((messages??[]).map(m=>m.user_id).concat(t?.user_id||[]).filter(Boolean))];
+    let pm=new Map();if(ids.length){const {data:p}=await db.from("profiles").select("id,username,display_name").in("id",ids);pm=new Map((p??[]).map(x=>[x.id,x]));}
+    const history=(messages??[]).map(m=>'<div class="ticket-message '+(m.user_id===currentUser.id?"mine":"")+'"><strong>'+esc(pm.get(m.user_id)?.display_name||pm.get(m.user_id)?.username||"Player")+'</strong><span>'+dateTime(m.created_at)+'</span><p>'+esc(m.message)+'</p></div>').join("");
+    $("ticket-modal-content").innerHTML='<div class="eyebrow">TICKET #'+t.id+'</div><div class="item-head"><h2>'+esc(t.market_items?.name||"Market Item")+'</h2><span class="pill '+(t.status==="open"?"red":"")+'">'+esc(t.status)+'</span></div><p class="muted">'+number(t.quantity)+'× · '+esc(t.message||"Keine Anfangsnachricht")+'</p><div class="ticket-chat" id="ticket-chat">'+(history||empty("Noch keine Nachrichten."))+'</div>'+(t.status==="closed"?'<div class="notice">Dieses Ticket ist geschlossen.</div>':'<form id="ticket-reply-form" class="chat-compose"><input class="input" id="ticket-reply" maxlength="2000" placeholder="Nachricht schreiben …" required><button class="btn">Senden</button></form>');
+    $("ticket-reply-form")?.addEventListener("submit",async e=>{e.preventDefault();const input=$("ticket-reply");const message=input.value.trim();if(!message)return;const {error}=await db.from("market_ticket_messages").insert({ticket_id:ticketId,user_id:currentUser.id,message});if(error)toast(error.message,"error");else{input.value="";openMarketTicket(ticketId);}});
+  })().catch(error=>{$("ticket-modal-content").innerHTML='<div class="notice error">'+esc(error.message)+'</div>';});
+}
 function wireMarket() {
-  document.querySelectorAll("[data-market-ticket]").forEach(button=>button.addEventListener("click",async()=>{
+  document.querySelectorAll("[data-market-ticket]").forEach(button=>button.addEventListener("click",()=>{
     if(!currentUser){go("login");return;}
-    const itemId=button.dataset.marketTicket;
-    const rawQuantity=prompt("Wie viele möchtest du?","1"); if(rawQuantity===null)return;
-    const q=Math.floor(Number(rawQuantity));
-    if(!Number.isFinite(q)||q<1){toast("Ungültige Menge.","error");return;}
-    const message=prompt("Nachricht an das Team (optional):","Ich möchte dieses Item kaufen."); if(message===null)return;
-    const {error}=await db.from("market_tickets").insert({user_id:currentUser.id,item_id:itemId,quantity:q,message:String(message).slice(0,2000)});
-    if(error)toast(error.message,"error");else{toast("Ticket erstellt. Das Team sieht deine Anfrage im Admin Panel.","success");await renderPage();}
+    openMarketTicketCreator(button.dataset.marketTicket,button.closest(".market-card")?.querySelector("h2")?.textContent||"Market Item");
   }));
 }
 function wirePage(route) {
@@ -533,6 +558,8 @@ function wirePage(route) {
   if(route==="settings")wireSettings();
   if(route==="admin")wireAdmin();
   if(route==="market")wireMarket();
+  if(route==="market-tickets")document.querySelectorAll("[data-ticket-open]").forEach(el=>el.addEventListener("click",()=>openMarketTicket(Number(el.dataset.ticketOpen))));
+
   if(route==="leaderboards"){
     document.querySelectorAll("[data-leaderboard-game]").forEach(button=>button.addEventListener("click",()=>{
       document.querySelectorAll("[data-leaderboard-game]").forEach(b=>b.classList.toggle("active",b===button));
@@ -720,10 +747,16 @@ async function loadAdminSection(section) {
   node.innerHTML=empty("Lade Daten …");
   try {
     if(section==="overview"){
-      const [players,bans,verifications,applications,orders,reports]=await Promise.all([
-        countRows("profiles"),countRows("bans"),countRows("verification_requests"),countRows("applications"),countRows("building_orders"),countRows("chat_reports")
+      const [players,bans,verifications,applications,orders,reports,pendingResult]=await Promise.all([
+        countRows("profiles"),countRows("bans"),countRows("verification_requests"),countRows("applications"),countRows("building_orders"),countRows("chat_reports"),
+        db.from("verification_requests").select("id,user_id,minecraft_name,status,requested_at").eq("status","pending").order("requested_at",{ascending:false}).limit(5)
       ]);
-      node.innerHTML='<div class="grid four"><div class="card stat-card"><div class="stat-label">Spieler</div><div class="stat-number">'+players+'</div></div><div class="card stat-card"><div class="stat-label">Bans</div><div class="stat-number">'+bans+'</div></div><div class="card stat-card"><div class="stat-label">Verifizierungen</div><div class="stat-number">'+verifications+'</div></div><div class="card stat-card"><div class="stat-label">Reports</div><div class="stat-number">'+reports+'</div></div></div><div class="card"><h2>Admin-Bereich bereit</h2><p class="muted">Jede privilegierte Aktion wird serverseitig geprüft und in Audit Logs gespeichert. Nutze die Tabs, um Spieler, Anträge, Chat und Website-Einstellungen zu verwalten.</p><span class="pill green">RLS aktiv</span> <span class="pill green">RBAC aktiv</span> <span class="pill green">Audit aktiv</span></div>';
+      if(pendingResult.error)throw pendingResult.error;
+      const verifyIds=[...new Set((pendingResult.data??[]).map(v=>v.user_id).filter(Boolean))];
+      let verifyProfiles=new Map();
+      if(verifyIds.length){const {data:vp}=await db.from("profiles").select("id,username,display_name").in("id",verifyIds);verifyProfiles=new Map((vp??[]).map(p=>[p.id,p]));}
+      const pendingCards=(pendingResult.data??[]).map(v=>{const p=verifyProfiles.get(v.user_id);return '<article class="admin-request"><div><strong>'+esc(p?.display_name||p?.username||"Player")+'</strong><span class="pill red">PENDING</span></div><p>🎮 '+esc(v.minecraft_name)+'</p><small>'+dateTime(v.requested_at)+'</small><div class="action-group"><button class="btn small" data-verify="yes" data-id="'+v.id+'">✓ Annehmen</button><button class="btn small danger" data-verify="no" data-id="'+v.id+'">Ablehnen</button></div></article>';}).join("");
+      node.innerHTML='<div class="grid four"><div class="card stat-card"><div class="stat-label">Spieler</div><div class="stat-number">'+players+'</div></div><div class="card stat-card"><div class="stat-label">Bans</div><div class="stat-number">'+bans+'</div></div><div class="card stat-card"><div class="stat-label">Verifizierungen</div><div class="stat-number">'+verifications+'</div></div><div class="card stat-card"><div class="stat-label">Reports</div><div class="stat-number">'+reports+'</div></div></div><div class="admin-overview-grid"><div class="card"><h2>Admin Control</h2><p class="muted">Serverseitige Aktionen, Audit Logs und Moderation.</p><span class="pill green">RLS aktiv</span> <span class="pill green">RBAC aktiv</span> <span class="pill green">Audit aktiv</span></div><div class="card verification-request-panel"><div class="item-head"><div><div class="eyebrow">QUICK ACTION</div><h2>Verifizierungs-Anfragen</h2></div><button class="btn small secondary" data-admin-tab="verifications">Alle öffnen</button></div><div class="admin-request-list">'+(pendingCards||'<div class="empty">Keine offenen Anfragen.</div>')+'</div></div></div>';
     } else if(section==="players"){
       const {data,error}=await db.from("profiles").select("id,username,display_name,verified,created_at").order("created_at",{ascending:false}).limit(100);if(error)throw error;
       const rows=(data??[]).map(p=>'<tr><td><strong>'+esc(p.display_name||p.username)+badge(p.verified)+'</strong></td><td>'+esc(p.username)+'</td><td>'+dateTime(p.created_at)+'</td><td><button class="btn small danger" data-player-action="ban" data-user="'+p.id+'">Bannen</button> <button class="btn small secondary" data-player-action="mute" data-user="'+p.id+'">Muten</button> <button class="btn small ghost" data-player-action="password" data-user="'+p.id+'">Passwort reset</button></td></tr>').join("");
@@ -765,8 +798,8 @@ async function loadAdminSection(section) {
     } else if(section==="market_tickets"){
       const {data,error}=await db.from("market_tickets").select("id,user_id,quantity,message,status,created_at,market_items(name,symbol),profiles(username,display_name)").order("created_at",{ascending:false}).limit(100);
       if(error)throw error;
-      const rows=(data??[]).map(t=>'<article class="list-item"><div class="item-head"><strong>#'+t.id+' · '+esc(t.market_items?.name||"Item")+'</strong><span class="pill '+(t.status==="open"?"red":"")+'">'+esc(t.status)+'</span></div><p><strong>'+esc(t.profiles?.display_name||t.profiles?.username||"Player")+'</strong> · Menge '+number(t.quantity)+'</p><p>'+esc(t.message||"Keine Nachricht")+'</p><div class="inline-meta">'+dateTime(t.created_at)+'</div><div class="action-group"><button class="btn small secondary" data-ticket-status="in_progress" data-id="'+t.id+'">In Bearbeitung</button><button class="btn small" data-ticket-status="closed" data-id="'+t.id+'">Schließen</button></div></article>').join("");
-      node.innerHTML='<div class="card"><h2>Market Tickets</h2><p class="muted">Anfragen von Spielern, die ein Ingame-Item aus dem Market kaufen möchten.</p><div class="list">'+(rows||empty("Keine Market-Tickets."))+'</div></div>';
+      const rows=(data??[]).map(t=>'<article class="ticket-row" data-ticket-open="'+t.id+'"><div class="ticket-main"><div class="item-head"><strong>#'+t.id+' · '+esc(t.market_items?.name||"Item")+'</strong><span class="pill '+(t.status==="open"?"red":"")+'">'+esc(t.status)+'</span></div><p><strong>'+esc(t.profiles?.display_name||t.profiles?.username||"Player")+'</strong> · '+number(t.quantity)+'×</p><p class="muted">'+esc(t.message||"Keine Nachricht")+'</p><small>'+dateTime(t.created_at)+'</small></div><div class="ticket-arrow">›</div></article>').join("");
+      node.innerHTML='<div class="card"><h2>Market Tickets</h2><p class="muted">Ticket anklicken, Verlauf öffnen und direkt mit dem Spieler schreiben.</p><div class="ticket-list">'+(rows||empty("Keine Market-Tickets."))+'</div></div>';
     } else if(section==="chat"){
       const [reportResult,messageResult]=await Promise.all([
         db.from("chat_reports").select("id,message_id,reporter_user_id,reason,status,created_at").order("created_at",{ascending:false}).limit(50),
@@ -796,6 +829,9 @@ async function loadAdminSection(section) {
 function wireAdminSection(section) {
   const node=$("admin-content");if(!node)return;
   node.onclick=async(event)=>{
+    const ticket=event.target.closest("[data-ticket-open]");
+    if(ticket){openMarketTicket(Number(ticket.dataset.ticketOpen));return;}
+
     const button=event.target.closest("button");if(!button)return;
     try {
       if(button.dataset.playerAction){
