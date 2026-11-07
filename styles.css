@@ -542,3 +542,10 @@ body{background:
 .ticket-message.mine{margin-left:auto;border-radius:13px 13px 4px 13px;background:#281017;border-color:#742837}
 .ticket-message strong{font-size:11px;color:#ff7381}.ticket-message span{margin-left:8px;color:#75666b;font-size:9px}.ticket-message p{margin:5px 0 0;overflow-wrap:anywhere}
 @media(max-width:800px){.admin-overview-grid{grid-template-columns:1fr}}
+
+.admin-aura{position:relative;display:inline-grid;place-items:center;width:25px;height:25px;margin-left:8px;vertical-align:middle;filter:drop-shadow(0 0 7px #ff2448)}
+.admin-aura:before{content:"";position:absolute;inset:2px;clip-path:polygon(50% 0,88% 15%,100% 50%,84% 88%,50% 100%,16% 88%,0 50%,12% 15%);background:linear-gradient(145deg,#ff4058,#8c0b1e);box-shadow:0 0 12px #ff2448}
+.admin-aura:after{content:"";position:absolute;inset:-4px;border-radius:50%;border:1px solid #ff405855;box-shadow:0 0 14px #ff244844;animation:adminAura 1.8s ease-in-out infinite}
+.admin-aura i{position:relative;z-index:2;width:8px;height:8px;border-radius:50%;background:#fff;box-shadow:0 0 8px #fff,0 0 14px #ff5268}
+@keyframes adminAura{0%,100%{transform:scale(.9);opacity:.35}50%{transform:scale(1.12);opacity:.85}}
+.admin-aura:hover:after{animation-duration:.7s}
