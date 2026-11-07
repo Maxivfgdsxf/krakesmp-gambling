@@ -85,7 +85,12 @@ function closeDrawer() {
   $("kraken-menu")?.setAttribute("aria-expanded","false");
 }
 function isAdmin() { return currentUser?.id === "cee3680c-3580-47c5-8c64-0277eac03800" || permissions.includes("users.view") || permissions.includes("roles.manage"); }
-function roleBadge(roleName){const map={admin:"ADMIN",moderator:"MOD",helper:"HELPER",media:"MEDIA",verified:"VERIFIED"};const key=String(roleName||"").toLowerCase();return map[key]?'<span class="role-aura role-'+key+'" title="'+map[key]+'"><i></i></span>':"";}
+function roleBadge(roleName){
+  const map={admin:"ADMIN",moderator:"MOD",helper:"HELPER",media:"MEDIA",verified:"VERIFIED"};
+  const key=String(roleName||"").toLowerCase();
+  if(!map[key])return "";
+  return '<span class="role-aura role-'+key+'" tabindex="0" role="img" aria-label="'+map[key]+'"><i></i><span class="role-tooltip">'+map[key]+'</span></span>';
+}
 function roleBadges(roles){return (roles||[]).map(r=>roleBadge(r?.name||r)).join("");}
 function badge(verified) { return verified ? '<span class="verified" title="Minecraft verifiziert">✓</span>' : ""; }
 async function list(table, select="*") {
