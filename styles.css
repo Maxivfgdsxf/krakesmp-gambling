@@ -608,3 +608,18 @@ body{background:radial-gradient(circle at 50% -12%,#3a0915 0,#14070c 30%,#080609
 .market-stock{background:linear-gradient(145deg,#210a11,#0e070a);border-color:#541827}
 .price-chart{color:#ff334f;background:#ff233d0a;border-color:#641b2a}
 .site-footer{border-top-color:#3b1420}
+
+/* FINAL RED TYPOGRAPHY / BRAND OVERRIDE */
+.topbar{border-bottom-color:#43131f!important;background:linear-gradient(180deg,#10060aee,#080609e8)!important}
+.brand{color:#fff!important;text-shadow:0 0 18px #ff203b22}
+.brand span:last-child{color:#ff5365!important;text-shadow:0 0 18px #ff203b55}
+.brand-logo{background:linear-gradient(145deg,#55111d,#14070b)!important;border-color:#9b2739!important;box-shadow:0 0 25px #ff203644!important}
+.house-mark path{stroke:#ff5365!important}
+.house-mark path:last-child{stroke:#fff!important}
+.hero h1,.page-head h1{color:#fff!important}
+.hero h1 span{color:#fff!important;text-shadow:0 0 40px #ff234533!important}
+.hero h1 .red-word{color:#ff3f58!important;text-shadow:0 0 40px #ff234566!important}
+.lead{color:#d7aeb5!important}
+.page-head p,.section-head p{color:#b88992!important}
+.eyebrow{color:#ff5365!important}
+.muted{color:#b88992!important}
