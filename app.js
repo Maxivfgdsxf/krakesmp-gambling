@@ -146,12 +146,18 @@ function shell(content) {
   root.innerHTML = `
     <header class="topbar">
       <button class="kraken-menu-btn" id="kraken-menu" aria-label="KRAKE Navigation öffnen" title="KRAKE Navigation">${KRAKEN_CREST}</button>
-      <a class="brand" href="#home"><span class="brand-logo" aria-hidden="true">${KRAKEN_CREST}</span><span>KRAKE SMP</span></a>
+      <a class="brand" href="#home"><span class="brand-logo house-brand" aria-hidden="true"><svg class="house-mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M8 30 32 9l24 21v24H38V40H26v14H8Z" fill="none" stroke="#ff5365" stroke-width="5" stroke-linejoin="round"/><path d="M23 29h18M26 36h12" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></span><span>KRAKE SMP</span>
       <div class="top-actions">
-        
-        
-        <span class="account-chip">${esc(display)}${adminMark()}</span>
-        <button class="icon-btn" id="account-open" aria-label="Profil öffnen">◎</button>
+        <button class="profile-pop-trigger" id="profile-pop-trigger" aria-label="Profil öffnen">
+          <span class="profile-pop-avatar">◎</span>
+          <span><strong>${esc(display)}</strong><small>${currentUser?"Profil":"Gast"}</small></span>${adminMark()}
+        </button>
+        <div class="profile-popover" id="profile-popover">
+          <div class="profile-pop-glow"></div>
+          <div class="profile-pop-avatar large">◎</div>
+          <div><div class="eyebrow">PLAYER PROFILE</div><h3>${esc(display)}${adminMark()}</h3><p>${currentUser?"Dein KRAKE SMP Profil":"Nicht angemeldet"}</p></div>
+          <div class="profile-pop-actions">${currentUser?'<button class="btn small" data-route="profile">Profil öffnen</button><button class="btn small secondary" id="profile-pop-logout">Abmelden</button>':'<button class="btn small" data-route="login">Anmelden</button>'}</div>
+        </div>
       </div>
     </header>
     <div class="drawer" id="drawer">
@@ -685,8 +691,37 @@ function wireReaction() {
       area.innerHTML='<div class="duel-grid"><button class="btn" data-duel="attack">⚔️ Angriff</button><button class="btn secondary" data-duel="defend">🛡️ Verteidigen</button><div id="duel-info" class="muted">Best of 5 gegen den KRAKE Bot.</div></div>';let p=0,b=0,round=0;
       document.querySelectorAll("[data-duel]").forEach(btn=>btn.onclick=async()=>{round++;const bot=["attack","defend"][Math.floor(Math.random()*2)],mine=btn.dataset.duel;if(mine!==bot)p++;else b++;$("duel-info").textContent="Runde "+round+" · Du "+p+" : "+b+" Bot";if(round>=5){const won=p>b;await save(slug,won?1000:300,p*1000,won,{player:p,bot:b});$("duel-info").textContent=won?"Du hast gewonnen!":"Der Bot gewinnt.";round=0;p=0;b=0;}});
     } else if(slug==="quiz"){
-      const qs=[["Wie viele Herzen hat ein Minecraft-Spieler?",["10","20","30"],1],["Welches Item macht einen Beacon?",["Netherstern","Diamant","Enderperle"],0],["Welche Dimension hat den Enderdrachen?",["Nether","End","Overworld"],1],["Was braucht man für einen Crafting Table?",["4 Holzplanken","8 Eisen","1 Stein"],0],["Welches Mob explodiert?",["Creeper","Skeleton","Villager"],0]];let i=0,score=0;
-      const draw=()=>{const q=qs[i];area.innerHTML='<div class="quiz-box"><h3>'+esc(q[0])+'</h3><div class="quiz-options">'+q[1].map((a,j)=>'<button class="btn secondary" data-quiz="'+j+'">'+esc(a)+'</button>').join("")+'</div><p class="muted">'+(i+1)+"/"+qs.length+'</p></div>';document.querySelectorAll("[data-quiz]").forEach(btn=>btn.onclick=async()=>{if(Number(btn.dataset.quiz)===q[2])score+=200;i++;if(i<qs.length)draw();else{area.innerHTML='<div class="game-center"><h2>Quiz beendet</h2><p>Score: '+score+'</p></div>';await save(slug,score,null,score>=600,{correct:score/200});}})};draw();
+      const facts=[
+        ["Wie viele Herzen hat ein Minecraft-Spieler?",["10","20","40"],1],["Welches Item wird für einen Beacon benötigt?",["Netherstern","Enderperle","Smaragd"],0],["In welcher Dimension lebt der Enderdrache?",["Nether","End","Overworld"],1],["Wie viele Holzplanken braucht ein Crafting Table?",["4","6","8"],0],["Welcher Mob explodiert?",["Creeper","Skeleton","Zombie"],0],["Wie viele Slots hat eine normale Kiste?",["27","36","54"],0],["Welches Erz wird für Diamantwerkzeuge benötigt?",["Diamanterz","Eisenerz","Kupfererz"],0],["Was braucht man für den Rahmen eines Netherportals?",["Obsidian","Bedrock","Basalt"],0],["Welches Tier kann man mit Weizen züchten?",["Kuh","Wolf","Katze"],0],["Was macht eine Elytra?",["Gleiten","Unsichtbar machen","Heilen"],0],["Welches Werkzeug baut Stein am besten ab?",["Spitzhacke","Schaufel","Axt"],0],["Was droppt ein Creeper typischerweise?",["Schwarzpulver","Faden","Knochen"],0],["Welche Dimension erreicht man durch ein Endportal?",["End","Nether","Overworld"],0],["Was braucht man als Basisstation zum Brauen?",["Braustand","Amboss","Ofen"],0],["Welcher Mob kann Dörfer angreifen?",["Plünderer","Kuh","Tintenfisch"],0],["Was kann man mit einem Amboss tun?",["Items reparieren und umbenennen","Wasser kochen","Portale öffnen"],0],["Was setzt ein Bett?",["Schlafpunkt","Spawn von Mobs","Zaubertisch"],0],["Welcher Block gehört zum Zaubertisch?",["Obsidian","Sandstein","Schnee"],0],["Welche Ressource ist typisch für Kupferblöcke?",["Kupfer","Gold","Quarz"],0],["Welcher Mob schießt Pfeile?",["Skelett","Schwein","Kuh"],0]
+      ];
+      const variants=["Welche Aussage trifft zu?","Wähle die richtige Antwort:","Was ist korrekt?","Kennst du die Antwort?","Welche Option stimmt?"];
+      const pool=Array.from({length:50},(_,round)=>facts.map((f,idx)=>({q:(round?variants[round%variants.length]+" ":"")+f[0],o:f[1],a:f[2],key:round*facts.length+idx}))).flat();
+      const startSelector=()=>{
+        area.innerHTML='<div class="quiz-box quiz-selector"><div class="eyebrow">QUIZ MODUS</div><h2>Wähle deine Schwierigkeit</h2><p class="muted">Über 1.000 Fragen im KRAKE Quiz-Pool · eigene Buttons · neue Fragen bei jeder Runde.</p><div class="quiz-difficulty-buttons"><button class="btn quiz-level" data-level="easy">EASY</button><button class="btn quiz-level" data-level="middle">MIDDLE</button><button class="btn quiz-level" data-level="hard">SCHWER</button></div></div>';
+        area.querySelectorAll("[data-level]").forEach(btn=>btn.onclick=()=>startQuiz(btn.dataset.level));
+      };
+      const startQuiz=(level)=>{
+        const count=level==="easy"?10:level==="middle"?12:15;
+        const selected=[...pool].sort(()=>Math.random()-.5).slice(0,count);
+        let i=0,score=0,correct=0;
+        const draw=()=>{
+          const q=selected[i];
+          area.innerHTML='<div class="quiz-box quiz-live"><div class="quiz-live-head"><span class="pill red">'+esc(level.toUpperCase())+'</span><span class="muted">'+(i+1)+' / '+selected.length+'</span></div><h3>'+esc(q.q)+'</h3><div class="quiz-options">'+q.o.map((a,j)=>'<button class="btn quiz-option" data-quiz="'+j+'">'+esc(a)+'</button>').join("")+'</div></div>';
+          area.querySelectorAll("[data-quiz]").forEach(btn=>btn.onclick=async()=>{
+            if(Number(btn.dataset.quiz)===q.a){correct++;score+=level==="easy"?100:level==="middle"?150:220;}
+            i++;
+            if(i<selected.length)draw();
+            else{
+              const won=correct>=Math.ceil(selected.length*.6);
+              area.innerHTML='<div class="game-center quiz-result"><div class="eyebrow">QUIZ COMPLETE</div><h2>'+correct+' / '+selected.length+' richtig</h2><p>Score: '+score+' · '+(won?"Bestanden":"Noch nicht bestanden")+'</p><button class="btn" data-quiz-again>Andere Schwierigkeit</button></div>';
+              await save(slug,score,null,won,{difficulty:level,correct,total:selected.length});
+              area.querySelector("[data-quiz-again]")?.addEventListener("click",startSelector);
+            }
+          });
+        };
+        draw();
+      };
+      startSelector();
     } else if(slug==="decision"){
       let round=0,score=0;const draw=()=>{area.innerHTML='<div class="game-center"><h2>Quick Decision</h2><p>Wähle schnell.</p><div class="action-row"><button class="btn" data-decision="left">LINKS</button><button class="btn secondary" data-decision="right">RECHTS</button></div><p class="muted">Runde '+(round+1)+'/8</p></div>';document.querySelectorAll("[data-decision]").forEach(btn=>btn.onclick=async()=>{if(Math.random()>.5)score+=150;round++;if(round<8)draw();else{area.innerHTML='<div class="game-center"><h2>Fertig</h2><p>Score: '+score+'</p></div>';await save(slug,score,null,score>=600,{rounds:8});}})};draw();
     }
