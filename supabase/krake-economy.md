@@ -13,6 +13,7 @@ This document describes the KRAKE virtual economy deployed to the Supabase proje
 - Dividend claim: one claim per account per day, calculated from the player's holdings and each share's daily dividend basis-point rate.
 - Event rewards: users register while an event is active; after the event ends, they can claim the configured `events.config.kc_reward` amount (default 500 KC).
 - Achievement unlocks credit the configured `achievements.reward_coins` amount once.
+- Event participants register during an active event and claim the configured `events.config.kc_reward` after it ends (default 500 KC).
 - Custom rank milestones and one-time KC bonuses are defined in `economy_ranks`.
 
 ## Database objects
@@ -25,7 +26,7 @@ This document describes the KRAKE virtual economy deployed to the Supabase proje
 - `economy_duels`, `economy_quiz_questions`
 - `economy_event_entries`
 
-RLS is enabled on all user-facing economy tables. Holdings, transaction history, reward claims, purchases and event entries are owner-scoped. Stock catalog, price history, rank definitions and shop catalog are readable by authenticated users. Economy mutations are performed by authenticated RPCs; clients cannot write balances or share quantities directly.
+RLS is enabled on all user-facing economy tables. The internal `economy_market_clock` table has no grants to `anon` or `authenticated` (only `postgres` has table privileges); the Supabase table advisor still reports that RLS itself is disabled there. Holdings, transaction history, reward claims, purchases and event entries are owner-scoped. Stock catalog, price history, rank definitions and shop catalog are readable by authenticated users. Economy mutations are performed by authenticated RPCs; clients cannot write balances or share quantities directly.
 
 ## RPC surface
 
