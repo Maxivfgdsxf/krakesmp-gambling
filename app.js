@@ -151,8 +151,12 @@ function shell(content) {
   root.innerHTML = `
     <header class="topbar">
       <button class="kraken-menu-btn" id="kraken-menu" aria-label="KRAKE Navigation öffnen" title="KRAKE Navigation">${KRAKEN_CREST}</button>
-      <a class="brand" href="#home"><span class="brand-logo house-brand" aria-hidden="true"><svg class="house-mark" viewBox="0 0 64 64"><path d="M8 30 32 9l24 21v24H38V40H26v14H8Z" fill="none" stroke="#ff5365" stroke-width="5" stroke-linejoin="round"/><path d="M23 29h18M26 36h12" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></span><span>KRAKE SMP</span></a>
+      <a class="brand" href="#home"><span class="brand-logo house-brand" aria-hidden="true"><svg class="house-mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M8 30 32 9l24 21v24H38V40H26v14H8Z" fill="none" stroke="#ff5365" stroke-width="5" stroke-linejoin="round"/><path d="M23 29h18M26 36h12" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></span><span>KRAKE SMP</span>
       <div class="top-actions">
+        <button class="profile-pop-trigger" id="profile-pop-trigger" aria-label="Profil öffnen">
+          <span class="profile-pop-avatar">◎</span>
+          <span><strong>${esc(display)}</strong><small>${currentUser?"Profil":"Gast"}</small></span>${adminMark()}
+        </button>
         <div class="profile-popover" id="profile-popover">
           <div class="profile-pop-glow"></div>
           <div class="profile-pop-avatar large">◎</div>
@@ -181,10 +185,10 @@ function shell(content) {
     <footer class="site-footer">KRAKE SMP · COMMUNITY PORTAL · <a href="#impressum">Impressum</a> · Made by Dev Mundi</footer>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
   `;
-  $("kraken-menu").onclick=()=>{ $("drawer")?.classList.toggle("open"); $("profile-popover")?.classList.toggle("open"); };
+  $("kraken-menu").onclick=()=>$( "drawer" )?.classList.toggle("open");
   $("menu-close").onclick=closeDrawer;
   $("drawer-back").onclick=closeDrawer;
-  $("profile-pop-logout")?.addEventListener("click",logout);
+  $("account-open").onclick=()=>go(currentUser?"profile":"login");
   
   $("site-search")?.addEventListener("keydown",event=>{
     if(event.key!=="Enter")return;
@@ -547,7 +551,7 @@ function openMarketTicket(ticketId){
   const close=()=>modal.remove();modal.querySelector(".modal-close").onclick=close;modal.querySelector(".krake-modal-backdrop").onclick=close;
   (async()=>{
     const [{data:t,error:te},{data:messages,error:me}]=await Promise.all([
-      db.from("market_tickets").select("id,user_id,quantity,message,status,created_at,market_items(name,symbol)").eq("id",ticketId).maybeSingle(),
+      db.from("market_tickets").select("id,user_id,quantity,message,status,created_at,market_items(name,symbol),profiles(username,display_name)").eq("id",ticketId).maybeSingle(),
       db.from("market_ticket_messages").select("id,user_id,message,created_at").eq("ticket_id",ticketId).order("created_at")
     ]);
     if(te)throw te;if(me)throw me;
@@ -564,7 +568,7 @@ function wireMarket() {
     openMarketTicketCreator(button.dataset.marketTicket,button.closest(".market-card")?.querySelector("h2")?.textContent||"Market Item");
   }));
 }
-function wireProfilePop() { $("profile-pop-logout")?.addEventListener("click",logout); }\nfunction wirePage(route) {
+function wirePage(route) {
   if(route==="login")wireLogin();
   if(route==="chat")wireChat();
   if(route==="minigames")wireReaction();
@@ -716,7 +720,7 @@ function wireReaction() {
         ["Wie viele Herzen hat ein Minecraft-Spieler?",["10","20","40"],1],["Welches Item wird für einen Beacon benötigt?",["Netherstern","Enderperle","Smaragd"],0],["In welcher Dimension lebt der Enderdrache?",["Nether","End","Overworld"],1],["Wie viele Holzplanken braucht ein Crafting Table?",["4","6","8"],0],["Welcher Mob explodiert?",["Creeper","Skeleton","Zombie"],0],["Wie viele Slots hat eine normale Kiste?",["27","36","54"],0],["Welches Erz wird für Diamantwerkzeuge benötigt?",["Diamanterz","Eisenerz","Kupfererz"],0],["Was braucht man für den Rahmen eines Netherportals?",["Obsidian","Bedrock","Basalt"],0],["Welches Tier kann man mit Weizen züchten?",["Kuh","Wolf","Katze"],0],["Was macht eine Elytra?",["Gleiten","Unsichtbar machen","Heilen"],0],["Welches Werkzeug baut Stein am besten ab?",["Spitzhacke","Schaufel","Axt"],0],["Was droppt ein Creeper typischerweise?",["Schwarzpulver","Faden","Knochen"],0],["Welche Dimension erreicht man durch ein Endportal?",["End","Nether","Overworld"],0],["Was braucht man als Basisstation zum Brauen?",["Braustand","Amboss","Ofen"],0],["Welcher Mob kann Dörfer angreifen?",["Plünderer","Kuh","Tintenfisch"],0],["Was kann man mit einem Amboss tun?",["Items reparieren und umbenennen","Wasser kochen","Portale öffnen"],0],["Was setzt ein Bett?",["Schlafpunkt","Spawn von Mobs","Zaubertisch"],0],["Welcher Block gehört zum Zaubertisch?",["Obsidian","Sandstein","Schnee"],0],["Welche Ressource ist typisch für Kupferblöcke?",["Kupfer","Gold","Quarz"],0],["Welcher Mob schießt Pfeile?",["Skelett","Schwein","Kuh"],0]
       ];
       const variants=["Welche Aussage trifft zu?","Wähle die richtige Antwort:","Was ist korrekt?","Kennst du die Antwort?","Welche Option stimmt?"];
-      const pool=Array.from({length:51},(_,round)=>facts.map((f,idx)=>({q:(round?variants[round%variants.length]+" ":"")+f[0],o:f[1],a:f[2],key:round*facts.length+idx}))).flat();
+      const pool=Array.from({length:50},(_,round)=>facts.map((f,idx)=>({q:(round?variants[round%variants.length]+" ":"")+f[0],o:f[1],a:f[2],key:round*facts.length+idx}))).flat();
       const startSelector=()=>{
         area.innerHTML='<div class="quiz-box quiz-selector"><div class="eyebrow">QUIZ MODUS</div><h2>Wähle deine Schwierigkeit</h2><p class="muted">Über 1.000 Fragen im KRAKE Quiz-Pool · eigene Buttons · neue Fragen bei jeder Runde.</p><div class="quiz-difficulty-buttons"><button class="btn quiz-level" data-level="easy">EASY</button><button class="btn quiz-level" data-level="middle">MIDDLE</button><button class="btn quiz-level" data-level="hard">SCHWER</button></div></div>';
         area.querySelectorAll("[data-level]").forEach(btn=>btn.onclick=()=>startQuiz(btn.dataset.level));
