@@ -387,7 +387,7 @@
   async function saveExtraGame(slug, score, timeMs, won, metadata) {
     const { data: game, error: gameError } = await db.from("minigames").select("id").eq("slug", slug).single();
     if (gameError) throw gameError;
-    const { error } = await db.from("minigame_results").insert({ minigame_id: game.id, user_id: currentUser.id, score: Math.max(0, Math.round(score)), time_ms: timeMs, won: Boolean(won), metadata: metadata || {} });
+    const { error } = await db.rpc("economy_submit_minigame_result",{p_slug:slug,p_score:Math.max(0,Math.round(score)),p_time_ms:timeMs??null,p_won:Boolean(won),p_metadata:metadata||{}});
     if (error) toast(error.message, "error");
     else { toast("Ergebnis gespeichert · +" + Math.min(100, 10 + Math.floor(score / 100)) + " XP", "success"); }
   }
