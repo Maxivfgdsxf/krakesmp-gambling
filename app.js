@@ -148,13 +148,13 @@ function shell(content) {
       <button class="kraken-menu-btn" id="kraken-menu" aria-label="KRAKE Navigation öffnen" title="KRAKE Navigation">${KRAKEN_CREST}</button>
       <a class="brand" href="#home"><span class="brand-logo house-brand" aria-hidden="true"><svg class="house-mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M8 30 32 9l24 21v24H38V40H26v14H8Z" fill="none" stroke="#ff5365" stroke-width="5" stroke-linejoin="round"/><path d="M23 29h18M26 36h12" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></span><span>KRAKE SMP</span>
       <div class="top-actions">
-        <button class="profile-pop-trigger" id="profile-pop-trigger" aria-label="Profil öffnen">
-          <span class="profile-pop-avatar">◎</span>
-          <span><strong>${esc(display)}</strong><small>${currentUser?"Profil":"Gast"}</small></span>${adminMark()}
-        </button>
         <div class="profile-popover" id="profile-popover">
           <div class="profile-pop-glow"></div>
           <div class="profile-pop-avatar large">◎</div>
+          <div><div class="eyebrow">PLAYER PROFILE</div><h3>${esc(display)}${adminMark()}</h3><p>${currentUser?"Dein KRAKE SMP Profil":"Nicht angemeldet"}</p></div>
+          <div class="profile-pop-actions">${currentUser?'<button class="btn small" data-route="profile">Profil öffnen</button><button class="btn small secondary" id="profile-pop-logout">Abmelden</button>':'<button class="btn small" data-route="login">Anmelden</button>'}</div>
+        </div>
+      </div>
           <div><div class="eyebrow">PLAYER PROFILE</div><h3>${esc(display)}${adminMark()}</h3><p>${currentUser?"Dein KRAKE SMP Profil":"Nicht angemeldet"}</p></div>
           <div class="profile-pop-actions">${currentUser?'<button class="btn small" data-route="profile">Profil öffnen</button><button class="btn small secondary" id="profile-pop-logout">Abmelden</button>':'<button class="btn small" data-route="login">Anmelden</button>'}</div>
         </div>
@@ -180,10 +180,10 @@ function shell(content) {
     <footer class="site-footer">KRAKE SMP · COMMUNITY PORTAL · <a href="#impressum">Impressum</a> · Made by Dev Mundi</footer>
     <div class="toast" id="toast" role="status" aria-live="polite"></div>
   `;
-  $("kraken-menu").onclick=()=>$( "drawer" )?.classList.toggle("open");
+  $("kraken-menu").onclick=()=>{ $("drawer")?.classList.toggle("open"); $("profile-popover")?.classList.toggle("open"); };
   $("menu-close").onclick=closeDrawer;
   $("drawer-back").onclick=closeDrawer;
-  $("account-open").onclick=()=>go(currentUser?"profile":"login");
+  $("profile-pop-logout")?.addEventListener("click",logout);
   
   $("site-search")?.addEventListener("keydown",event=>{
     if(event.key!=="Enter")return;
@@ -554,7 +554,7 @@ function wireMarket() {
     openMarketTicketCreator(button.dataset.marketTicket,button.closest(".market-card")?.querySelector("h2")?.textContent||"Market Item");
   }));
 }
-function wirePage(route) {
+function wireProfilePop() { $("profile-pop-logout")?.addEventListener("click",logout); }\nfunction wirePage(route) {
   if(route==="login")wireLogin();
   if(route==="chat")wireChat();
   if(route==="minigames")wireReaction();
