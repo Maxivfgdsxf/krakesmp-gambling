@@ -272,9 +272,9 @@ async function renderLogin() {
 async function renderChat() {
   const messages = await db.from("chat_messages")
     .select("id,user_id,message,created_at,profiles(username,verified)")
-    .is("deleted_at",null).order("created_at",{ascending:true}).limit(100);
+    .is("deleted_at",null).order("created_at",{ascending:false}).limit(100);
   if (messages.error) throw messages.error;
-  lastChatMessages = messages.data??[];
+  lastChatMessages = (messages.data??[]).reverse();
   const items = lastChatMessages.map(m=>`
     <article class="chat-message">
       <div><span class="who">${esc(m.profiles?.username||"Player")}${badge(m.profiles?.verified)}</span><span class="when">${dateTime(m.created_at)}</span>
@@ -469,10 +469,10 @@ function wireLogin() {
 }
 async function loadChatMessages() {
   const {data,error}=await db.from("chat_messages").select("id,user_id,message,created_at,profiles(username,verified)")
-    .is("deleted_at",null).order("created_at",{ascending:true}).limit(100);
+    .is("deleted_at",null).order("created_at",{ascending:false}).limit(100);
   if(error)throw error;
   const node=$("chat-window");if(!node)return;
-  node.innerHTML=(data??[]).map(m=>'<article class="chat-message"><div><span class="who">'+esc(m.profiles?.username||"Player")+badge(m.profiles?.verified)+'</span><span class="when">'+dateTime(m.created_at)+'</span>'+(currentUser&&currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':"")+'</div><p>'+esc(m.message)+'</p></article>').join("")||empty("Noch keine Nachrichten. Starte die Unterhaltung!");
+  node.innerHTML=(data??[]).reverse().map(m=>'<article class="chat-message"><div><span class="who">'+esc(m.profiles?.username||"Player")+badge(m.profiles?.verified)+'</span><span class="when">'+dateTime(m.created_at)+'</span>'+(currentUser&&currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':"")+'</div><p>'+esc(m.message)+'</p></article>').join("")||empty("Noch keine Nachrichten. Starte die Unterhaltung!");
   node.scrollTop=node.scrollHeight;
 }
 function wireChat() {
