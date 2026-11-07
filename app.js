@@ -92,6 +92,18 @@ function roleBadge(roleName){
   return '<span class="role-aura role-'+key+'" tabindex="0" role="img" aria-label="'+map[key]+'"><i></i><span class="role-tooltip">'+map[key]+'</span></span>';
 }
 function roleBadges(roles){return (roles||[]).map(r=>roleBadge(r?.name||r)).join("");}
+function wireRoleAuraToggles(){
+  document.querySelectorAll(".role-aura").forEach(badge=>{
+    if(badge.dataset.tooltipWired==="1")return;
+    badge.dataset.tooltipWired="1";
+    badge.addEventListener("click",event=>{
+      event.preventDefault();
+      event.stopPropagation();
+      const open=badge.classList.toggle("tooltip-open");
+      if(open)badge.focus();else badge.blur();
+    });
+  });
+}
 function badge(verified) { return verified ? '<span class="verified" title="Minecraft verifiziert">✓</span>' : ""; }
 async function list(table, select="*") {
   const { data, error } = await db.from(table).select(select);
@@ -218,6 +230,7 @@ function shell(content) {
     await db.auth.signOut(); await refreshAuth(); go("home"); await render();
   };
   root.querySelectorAll("[data-route]").forEach(button=>button.addEventListener("click",()=>go(button.dataset.route)));
+  wireRoleAuraToggles();
 }
 function pageHead(eyebrow,title,desc="") {
   return '<div class="page-head"><div class="eyebrow">'+esc(eyebrow)+'</div><h1>'+esc(title)+'</h1>'+(desc?'<p>'+esc(desc)+'</p>':"")+'</div>';
