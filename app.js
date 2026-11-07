@@ -81,7 +81,7 @@ async function refreshAuth() {
   if (userError || !user) return;
   currentUser = user;
   const [{data:profileData,error:profileError},{data:permissionData}] = await Promise.all([
-    db.from("profiles").select("id,username,display_name,avatar_url,verified,created_at,last_login_at").eq("id",user.id).maybeSingle(),
+    db.from("profiles").select("id,username,display_name,avatar_url,verified,created_at").eq("id",user.id).maybeSingle(),
     db.rpc("my_permissions")
   ]);
   if (profileError) throw profileError;
@@ -505,7 +505,7 @@ async function loadAdminSection(section) {
       const {data,error}=await db.from("market_items").select("id,symbol,name,active").order("symbol");if(error)throw error;
       node.innerHTML='<div class="card"><h2>Virtuelle Market-Preise</h2><div class="list">'+((data??[]).map(item=>'<form class="list-item market-admin-form" data-item="'+item.id+'"><div class="item-head"><strong>'+esc(item.name)+' · '+esc(item.symbol)+'</strong><span class="pill">'+(item.active?"aktiv":"inaktiv")+'</span></div><div class="form-grid"><div class="field"><label>Neuer Preis in ◆</label><input class="input" name="price" type="number" min="0" step="1" required></div><div class="field"><label>Änderungsgrund</label><input class="input" name="reason" maxlength="200" placeholder="Marktanpassung"></div></div><button class="btn small">Preis speichern</button></form>').join("")||empty("Keine Assets angelegt."))+'</div></div>';
     } else if(section==="chat"){
-      const {data,error}=await db.from("chat_reports").select("id,message_id,reporter_user_id,reason,status,created_at,profiles:reporter_user_id(username)").order("created_at",{ascending:false}).limit(50);if(error)throw error;
+      const {data,error}=await db.from("chat_reports").select("id,message_id,reporter_user_id,reason,status,created_at").order("created_at",{ascending:false}).limit(50);if(error)throw error;
       node.innerHTML='<div class="card"><h2>Chat Reports</h2><div class="list">'+((data??[]).map(r=>'<article class="list-item"><div class="item-head"><strong>Report #'+r.id+'</strong><span class="pill">'+esc(r.status)+'</span></div><p>'+esc(r.reason)+'</p><div class="inline-meta">Message #'+esc(r.message_id)+' · '+dateTime(r.created_at)+'</div><div class="action-group"><button class="btn small secondary" data-report-status="resolved" data-id="'+r.id+'">Erledigt</button><button class="btn small danger" data-delete-message="'+r.message_id+'">Nachricht löschen</button><button class="btn small ghost" data-report-status="dismissed" data-id="'+r.id+'">Dismiss</button></div></article>').join("")||empty("Keine Reports vorhanden."))+'</div></div>';
     } else if(section==="roles"){
       const {data:users,error}=await db.from("profiles").select("id,username").order("username").limit(100);if(error)throw error;
