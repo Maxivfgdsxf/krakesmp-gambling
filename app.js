@@ -950,9 +950,15 @@ async function checkMaintenance() {
   root.insertAdjacentHTML("beforeend",'<div class="maintenance-screen"><div class="eyebrow">KRAKE SMP</div><h1>Wartungsarbeiten</h1><p class="muted">'+esc(data.message)+'</p></div>');
 }
 
+let renderStarted = false;
+const withTimeout = (promise, ms, label) => Promise.race([
+  promise,
+  new Promise((_, reject) => setTimeout(() => reject(new Error(label + " hat zu lange gedauert.")), ms))
+]);
+
 async function render() {
-  // Render the shell immediately so a slow/unavailable backend can never leave the
-  // visitor stuck forever on the initial "wird geladen" screen.
+  if (renderStarted) return;
+  renderStarted = true;
   try {
     shell('<section class="page-head"><div class="eyebrow">KRAKE SMP</div><h1>Willkommen</h1><p>Community Portal wird geladen …</p></section><section class="card"><p class="muted">Verbindung wird hergestellt.</p></section>');
   } catch(error) {
@@ -961,12 +967,12 @@ async function render() {
   }
   try {
     if(!db) throw new Error("Supabase konnte nicht geladen werden.");
-    await refreshAuth();
-    await renderPage();
-    await checkMaintenance();
+    await withTimeout(refreshAuth(), 8000, "Die Anmeldung");
+    await withTimeout(renderPage(), 12000, "Die Seite");
+    await withTimeout(checkMaintenance(), 5000, "Der Wartungscheck");
   } catch(error) {
     console.error(error);
-    shell('<section class="card"><div class="eyebrow">SYSTEM</div><h2>KRAKE SMP ist erreichbar</h2><p class="muted">Die Verbindung zum Backend konnte gerade nicht hergestellt werden.</p><button class="btn secondary" onclick="location.reload()">Erneut versuchen</button></section>');
+    shell('<section class="card"><div class="eyebrow">SYSTEM</div><h2>KRAKE SMP konnte nicht vollständig geladen werden.</h2><p class="muted">'+esc(error?.message||"Unbekannter Startfehler")+'</p><button class="btn secondary" onclick="location.reload()">Erneut versuchen</button></section>');
   }
 }
 window.addEventListener("hashchange",()=>renderPage());
