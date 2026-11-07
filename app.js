@@ -42,6 +42,7 @@ let profile = null;
 let permissions = [];
 let currentRoute = "home";
 let activeChatChannel = null;
+let chatPollTimer = null;
 let reactionTimeout = null;
 let reactionStartedAt = 0;
 let reactionState = "idle";
@@ -290,11 +291,21 @@ async function renderLogin() {
 
 async function renderChat() {
   const messages = await db.from("chat_messages")
-    .select("id,user_id,message,created_at,profiles(username,display_name,verified)")
+    .select("id,user_id,message,created_at")
     .is("deleted_at",null).order("created_at",{ascending:false}).limit(100);
   if (messages.error) throw messages.error;
-  lastChatMessages = (messages.data??[]).reverse();
-  const items = lastChatMessages.map(m=>`
+
+  const rows=(messages.data??[]).reverse();
+  const ids=[...new Set(rows.map(m=>m.user_id).filter(Boolean))];
+  let profilesById=new Map();
+  if(ids.length){
+    const {data:profilesData,error:profilesError}=await db.from("profiles")
+      .select("id,username,display_name,verified").in("id",ids);
+    if(profilesError) console.warn("Chat profile lookup failed:",profilesError.message);
+    profilesById=new Map((profilesData??[]).map(p=>[p.id,p]));
+  }
+  lastChatMessages=rows.map(m=>({...m,profiles:profilesById.get(m.user_id)||null}));
+  const items=lastChatMessages.map(m=>`
     <article class="chat-message">
       <div><span class="who">${esc(m.profiles?.display_name||m.profiles?.username||"Player")}${badge(m.profiles?.verified)}</span><span class="when">${dateTime(m.created_at)}</span>
       ${currentUser && currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':""}</div>
@@ -306,32 +317,57 @@ async function renderChat() {
     (currentUser?'<form id="chat-form" class="chat-compose"><input class="input" id="chat-input" maxlength="2000" placeholder="Nachricht schreiben …" required><button class="btn" type="submit">Senden</button></form>':'<div class="notice" style="margin-top:12px">Zum Schreiben bitte <button class="btn small" data-route="login">anmelden</button>.</div>')+
     '<p class="form-note">Nachrichten werden moderiert. Melde problematische Inhalte über „Melden“.</p></section>';
 }
-
 async function renderLeaderboards() {
   const {data:games,error:gamesError}=await db.from("minigames").select("id,slug,name,description").eq("active",true).order("name");
   if(gamesError) throw gamesError;
   const {data:results,error:resultsError}=await db.from("minigame_results")
-    .select("minigame_id,user_id,score,time_ms,won,created_at,minigames(slug,name),profiles(username,display_name,verified)")
-    .order("score",{ascending:false}).limit(1000);
+    .select("minigame_id,user_id,score,time_ms,won,created_at,profiles(username,display_name,verified)")
+    .order("created_at",{ascending:false}).limit(5000);
   if(resultsError) throw resultsError;
-  const groups=new Map((games??[]).map(g=>[g.id,[]]));
-  for(const r of (results??[])) if(groups.has(r.minigame_id)) groups.get(r.minigame_id).push(r);
+
+  const groups=new Map((games??[]).map(g=>[g.id,new Map()]));
+  for(const r of (results??[])){
+    const players=groups.get(r.minigame_id);
+    if(!players) continue;
+    const current=players.get(r.user_id);
+    const time=Number.isFinite(Number(r.time_ms)) && Number(r.time_ms)>0 ? Number(r.time_ms) : null;
+    if(!current){
+      players.set(r.user_id,{...r,rounds:1,bestTime:time});
+    }else{
+      current.rounds++;
+      if(time!==null && (current.bestTime===null || time<current.bestTime)) current.bestTime=time;
+      if(Number(r.score||0)>Number(current.score||0)) current.score=r.score;
+      if(new Date(r.created_at)>new Date(current.created_at)) current.created_at=r.created_at;
+      if(r.profiles) current.profiles=r.profiles;
+    }
+  }
+
+  const formatTime=(ms)=>{
+    if(ms===null || ms===undefined) return "—";
+    const n=Math.max(0,Math.round(Number(ms)));
+    return n>=1000 ? (n/1000).toFixed(2)+" s" : n+" ms";
+  };
+
   const cards=(games??[]).map((g,index)=>{
-    const rows=groups.get(g.id)||[];
-    const sorted=[...rows].sort((a,b)=>{
-      if(g.slug==="reaction" && a.time_ms!=null && b.time_ms!=null) return a.time_ms-b.time_ms;
+    const players=groups.get(g.id)||new Map();
+    const rows=[...players.values()].sort((a,b)=>{
+      if(a.bestTime!==null && b.bestTime!==null) return a.bestTime-b.bestTime;
+      if(a.bestTime!==null) return -1;
+      if(b.bestTime!==null) return 1;
       return Number(b.score||0)-Number(a.score||0);
     }).slice(0,25);
-    const body=sorted.map((p,i)=>{
+
+    const body=rows.map((p,i)=>{
       const player=esc(p.profiles?.display_name||p.profiles?.username||"Player");
-      const admin=isAdmin() && p.user_id===currentUser?.id ? adminMark() : "";
-      const metric=g.slug==="reaction" && p.time_ms!=null ? p.time_ms+" ms" : number(p.score||0);
-      return '<tr><td><span class="rank '+(i===0?"gold":i===1?"silver":i===2?"bronze":"")+'">'+(i+1)+'</span></td><td><strong>'+player+'</strong> '+badge(p.profiles?.verified)+' '+admin+'</td><td>'+metric+'</td><td>'+((p.won?"WIN":"—"))+'</td><td>'+dateTime(p.created_at)+'</td></tr>';
+      const admin=p.user_id==="cee3680c-3580-47c5-8c64-0277eac03800" ? '<span class="admin-badge" title="Administrator">ADMIN</span>' : "";
+      return '<tr><td><span class="rank '+(i===0?"gold":i===1?"silver":i===2?"bronze":"")+'">'+(i+1)+'</span></td><td><strong>'+player+'</strong> '+badge(p.profiles?.verified)+' '+admin+'</td><td><strong>'+formatTime(p.bestTime)+'</strong></td><td>'+number(p.rounds)+'</td></tr>';
     }).join("");
-    return '<section class="leaderboard-game card" data-board="'+esc(g.slug)+'" '+(index===0?"":"hidden")+'><div class="section-head"><div><div class="eyebrow">KRAKE COMPETITIVE</div><h2>'+esc(g.name)+' Leaderboard</h2><p>'+esc(g.description||"Spieler-Rankings")+'</p></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>Score</th><th>Status</th><th>Datum</th></tr></thead><tbody>'+(body||'<tr><td colspan="5">Noch keine Ergebnisse.</td></tr>')+'</tbody></table></div></section>';
+
+    return '<section class="leaderboard-game card" data-board="'+esc(g.slug)+'" '+(index===0?"":"hidden")+'><div class="section-head"><div><div class="eyebrow">KRAKE COMPETITIVE</div><h2>'+esc(g.name)+' Leaderboard</h2><p>'+esc(g.description||"Spieler-Rankings")+'</p></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>Bestzeit</th><th>Gespielte Runden</th></tr></thead><tbody>'+(body||'<tr><td colspan="4">Noch keine Ergebnisse.</td></tr>')+'</tbody></table></div></section>';
   }).join("");
+
   const tabs=(games??[]).map((g,i)=>'<button class="leaderboard-tab '+(i===0?"active":"")+'" data-leaderboard-game="'+esc(g.slug)+'">'+esc(g.name)+'</button>').join("");
-  return pageHead("COMPETITIVE","Leaderboards","Für jedes Minigame gibt es ein eigenes KRAKE Leaderboard.")+
+  return pageHead("COMPETITIVE","Leaderboards","Pro Minigame siehst du nur deine beste Zeit und wie viele Runden gespielt wurden.")+
     '<section class="card leaderboard-shell"><div class="leaderboard-tabs">'+tabs+'</div><div class="leaderboard-panels">'+cards+'</div></section>';
 }
 async function renderMarket() {
@@ -447,6 +483,7 @@ async function renderAdmin() {
 
 async function renderPage() {
   if(activeChatChannel){await db.removeChannel(activeChatChannel);activeChatChannel=null;}
+  if(chatPollTimer){clearInterval(chatPollTimer);chatPollTimer=null;}
   if(reactionTimeout){clearTimeout(reactionTimeout);reactionTimeout=null;}
   const route=(location.hash.slice(1)||"home").split("?")[0].split("/")[0];
   currentRoute=route;
@@ -540,16 +577,25 @@ function wireLogin() {
   };
 }
 async function loadChatMessages() {
-  const {data,error}=await db.from("chat_messages").select("id,user_id,message,created_at,profiles(username,display_name,verified)")
+  const {data,error}=await db.from("chat_messages").select("id,user_id,message,created_at")
     .is("deleted_at",null).order("created_at",{ascending:false}).limit(100);
   if(error)throw error;
+  const rows=(data??[]).reverse();
+  const ids=[...new Set(rows.map(m=>m.user_id).filter(Boolean))];
+  let profilesById=new Map();
+  if(ids.length){
+    const {data:profilesData}=await db.from("profiles").select("id,username,display_name,verified").in("id",ids);
+    profilesById=new Map((profilesData??[]).map(p=>[p.id,p]));
+  }
+  lastChatMessages=rows.map(m=>({...m,profiles:profilesById.get(m.user_id)||null}));
   const node=$("chat-window");if(!node)return;
-  node.innerHTML=(data??[]).reverse().map(m=>'<article class="chat-message"><div><span class="who">'+esc(m.profiles?.display_name||m.profiles?.username||"Player")+badge(m.profiles?.verified)+'</span><span class="when">'+dateTime(m.created_at)+'</span>'+(currentUser&&currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':"")+'</div><p>'+esc(m.message)+'</p></article>').join("")||empty("Noch keine Nachrichten. Starte die Unterhaltung!");
+  node.innerHTML=lastChatMessages.map(m=>'<article class="chat-message"><div><span class="who">'+esc(m.profiles?.display_name||m.profiles?.username||"Player")+badge(m.profiles?.verified)+'</span><span class="when">'+dateTime(m.created_at)+'</span>'+(currentUser&&currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':"")+'</div><p>'+esc(m.message)+'</p></article>').join("")||empty("Noch keine Nachrichten. Starte die Unterhaltung!");
   node.scrollTop=node.scrollHeight;
 }
 function wireChat() {
   $("chat-form")?.addEventListener("submit",async event=>{
-    event.preventDefault();if(!currentUser){toast("Bitte zuerst anmelden.","error");return;}
+    event.preventDefault();
+    if(!currentUser){toast("Bitte zuerst anmelden.","error");return;}
     const input=$("chat-input");const message=input.value.trim();if(!message)return;
     const submit=event.currentTarget.querySelector("button[type=submit],button:not([type])");
     if(submit)submit.disabled=true;
@@ -557,11 +603,11 @@ function wireChat() {
     if(submit)submit.disabled=false;
     if(error){
       console.error("Chat send failed",error);
-      const reason=error.code==="42501"?"Du darfst gerade nicht schreiben. Prüfe, ob dein Account stummgeschaltet oder gesperrt ist.":error.message;
-      toast(reason,"error");return;
+      toast("Chat konnte nicht gesendet werden: "+(error.message||"Unbekannter Fehler"),"error");
+      return;
     }
     input.value="";
-    try{await loadChatMessages();}catch(refreshError){console.error(refreshError);}
+    await loadChatMessages().catch(err=>console.error("Chat refresh failed",err));
   });
   $("chat-window")?.addEventListener("click",async event=>{
     const button=event.target.closest("[data-report]");if(!button||!currentUser)return;
@@ -569,7 +615,10 @@ function wireChat() {
     const {error}=await db.from("chat_reports").insert({message_id:Number(button.dataset.report),reporter_user_id:currentUser.id,reason});
     toast(error?error.message:"Nachricht wurde gemeldet.",error?"error":"success");
   });
-  activeChatChannel=db.channel("krake-global-chat").on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages"},()=>loadChatMessages().catch(console.error)).subscribe();
+  activeChatChannel=db.channel("krake-global-chat")
+    .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages"},()=>loadChatMessages().catch(console.error))
+    .subscribe((status)=>{ if(status==="CHANNEL_ERROR"||status==="TIMED_OUT") console.warn("Chat realtime:",status); });
+  chatPollTimer=window.setInterval(()=>loadChatMessages().catch(console.error),5000);
 }
 function wireReaction() {
   const stage=$("game-stage"), area=$("game-area");
