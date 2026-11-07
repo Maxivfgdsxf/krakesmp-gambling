@@ -184,8 +184,8 @@ async function renderHome() {
   const [events,announcements,leaders,chats,marketItems,balance] = await Promise.all([
     db.from("events").select("name,description,starts_at,ends_at").eq("active",true).limit(1),
     db.from("announcements").select("title,message,created_at").eq("active",true).order("created_at",{ascending:false}).limit(2),
-    db.from("player_statistics").select("user_id,rating,wins,games_played,total_score,profiles(username,verified)").order("rating",{ascending:false}).limit(3),
-    db.from("chat_messages").select("id,user_id,message,created_at,profiles(username,verified)").is("deleted_at",null).order("created_at",{ascending:false}).limit(3),
+    db.from("player_statistics").select("user_id,rating,wins,games_played,total_score,profiles(username,display_name,verified)").order("rating",{ascending:false}).limit(3),
+    db.from("chat_messages").select("id,user_id,message,created_at,profiles(username,display_name,verified)").is("deleted_at",null).order("created_at",{ascending:false}).limit(3),
     db.from("market_items").select("id,symbol,name").eq("active",true).order("symbol").limit(3),
     currentUser?db.from("user_balances").select("balance").eq("user_id",currentUser.id).maybeSingle():Promise.resolve({data:null,error:null})
   ]);
@@ -195,8 +195,8 @@ async function renderHome() {
   const event=events.data?.[0];
   const hello=profile?.display_name||profile?.username||"Spieler";
   const announcementHtml=(announcements.data??[]).map(a=>'<article class="list-item"><div class="item-title">'+esc(a.title)+'</div><p>'+esc(a.message)+'</p><div class="inline-meta">'+dateTime(a.created_at)+'</div></article>').join("");
-  const leaderHtml=(leaders.data??[]).map((p,i)=>'<div class="leader-row"><span class="leader-rank">'+(i+1)+'</span><span class="leader-avatar">♟</span><strong>'+esc(p.profiles?.username||"Player")+'</strong><span>'+number(p.rating)+' RP</span></div>').join("");
-  const chatHtml=(chats.data??[]).map(m=>'<div class="home-chat-row"><strong>'+esc(m.profiles?.username||"Player")+'</strong><span>'+dateTime(m.created_at)+'</span><p>'+esc(m.message)+'</p></div>').join("");
+  const leaderHtml=(leaders.data??[]).map((p,i)=>'<div class="leader-row"><span class="leader-rank">'+(i+1)+'</span><span class="leader-avatar">♟</span><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong><span>'+number(p.rating)+' RP</span></div>').join("");
+  const chatHtml=(chats.data??[]).map(m=>'<div class="home-chat-row"><strong>'+esc(m.profiles?.display_name||m.profiles?.username||"Player")+'</strong><span>'+dateTime(m.created_at)+'</span><p>'+esc(m.message)+'</p></div>').join("");
   const marketHtml=(marketItems.data??[]).map(m=>'<div class="market-mini-row"><span class="market-mini-icon">◆</span><div><strong>'+esc(m.name)+'</strong><small>'+esc(m.symbol)+'</small></div></div>').join("");
   return `
     <section class="home-hero">
@@ -271,13 +271,13 @@ async function renderLogin() {
 
 async function renderChat() {
   const messages = await db.from("chat_messages")
-    .select("id,user_id,message,created_at,profiles(username,verified)")
+    .select("id,user_id,message,created_at,profiles(username,display_name,verified)")
     .is("deleted_at",null).order("created_at",{ascending:false}).limit(100);
   if (messages.error) throw messages.error;
   lastChatMessages = (messages.data??[]).reverse();
   const items = lastChatMessages.map(m=>`
     <article class="chat-message">
-      <div><span class="who">${esc(m.profiles?.username||"Player")}${badge(m.profiles?.verified)}</span><span class="when">${dateTime(m.created_at)}</span>
+      <div><span class="who">${esc(m.profiles?.display_name||m.profiles?.username||"Player")}${badge(m.profiles?.verified)}</span><span class="when">${dateTime(m.created_at)}</span>
       ${currentUser && currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':""}</div>
       <p>${esc(m.message)}</p>
     </article>
@@ -290,10 +290,10 @@ async function renderChat() {
 
 async function renderLeaderboards() {
   const {data,error}=await db.from("player_statistics")
-    .select("user_id,games_played,wins,losses,best_time_ms,total_score,rating,profiles(username,verified)")
+    .select("user_id,games_played,wins,losses,best_time_ms,total_score,rating,profiles(username,display_name,verified)")
     .order("rating",{ascending:false}).limit(100);
   if(error) throw error;
-  const body=(data??[]).map((p,i)=>'<tr><td><span class="rank '+(i===0?"gold":i===1?"silver":i===2?"bronze":"")+'">'+(i+1)+'</span></td><td>'+esc(p.profiles?.username||"Player")+badge(p.profiles?.verified)+'</td><td>'+number(p.rating)+'</td><td>'+number(p.wins)+'</td><td>'+number(p.games_played)+'</td><td>'+number(p.total_score)+'</td></tr>').join("");
+  const body=(data??[]).map((p,i)=>'<tr><td><span class="rank '+(i===0?"gold":i===1?"silver":i===2?"bronze":"")+'">'+(i+1)+'</span></td><td>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+badge(p.profiles?.verified)+'</td><td>'+number(p.rating)+'</td><td>'+number(p.wins)+'</td><td>'+number(p.games_played)+'</td><td>'+number(p.total_score)+'</td></tr>').join("");
   return pageHead("COMPETITIVE","Leaderboards","Ratings und Statistiken der KRAKE Community.")+
     (body?'<div class="table-wrap"><table><thead><tr><th>Rang</th><th>Spieler</th><th>Rating</th><th>Wins</th><th>Games</th><th>Score</th></tr></thead><tbody>'+body+'</tbody></table></div>':empty("Noch keine Spieler-Statistiken vorhanden."));
 }
@@ -468,11 +468,11 @@ function wireLogin() {
   };
 }
 async function loadChatMessages() {
-  const {data,error}=await db.from("chat_messages").select("id,user_id,message,created_at,profiles(username,verified)")
+  const {data,error}=await db.from("chat_messages").select("id,user_id,message,created_at,profiles(username,display_name,verified)")
     .is("deleted_at",null).order("created_at",{ascending:false}).limit(100);
   if(error)throw error;
   const node=$("chat-window");if(!node)return;
-  node.innerHTML=(data??[]).reverse().map(m=>'<article class="chat-message"><div><span class="who">'+esc(m.profiles?.username||"Player")+badge(m.profiles?.verified)+'</span><span class="when">'+dateTime(m.created_at)+'</span>'+(currentUser&&currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':"")+'</div><p>'+esc(m.message)+'</p></article>').join("")||empty("Noch keine Nachrichten. Starte die Unterhaltung!");
+  node.innerHTML=(data??[]).reverse().map(m=>'<article class="chat-message"><div><span class="who">'+esc(m.profiles?.display_name||m.profiles?.username||"Player")+badge(m.profiles?.verified)+'</span><span class="when">'+dateTime(m.created_at)+'</span>'+(currentUser&&currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':"")+'</div><p>'+esc(m.message)+'</p></article>').join("")||empty("Noch keine Nachrichten. Starte die Unterhaltung!");
   node.scrollTop=node.scrollHeight;
 }
 function wireChat() {
@@ -577,7 +577,7 @@ async function loadAdminSection(section) {
       node.innerHTML='<div class="grid four"><div class="card stat-card"><div class="stat-label">Spieler</div><div class="stat-number">'+players+'</div></div><div class="card stat-card"><div class="stat-label">Bans</div><div class="stat-number">'+bans+'</div></div><div class="card stat-card"><div class="stat-label">Verifizierungen</div><div class="stat-number">'+verifications+'</div></div><div class="card stat-card"><div class="stat-label">Reports</div><div class="stat-number">'+reports+'</div></div></div><div class="card"><h2>Admin-Bereich bereit</h2><p class="muted">Jede privilegierte Aktion wird serverseitig geprüft und in Audit Logs gespeichert. Nutze die Tabs, um Spieler, Anträge, Chat und Website-Einstellungen zu verwalten.</p><span class="pill green">RLS aktiv</span> <span class="pill green">RBAC aktiv</span> <span class="pill green">Audit aktiv</span></div>';
     } else if(section==="players"){
       const {data,error}=await db.from("profiles").select("id,username,display_name,verified,created_at").order("created_at",{ascending:false}).limit(100);if(error)throw error;
-      const rows=(data??[]).map(p=>'<tr><td><strong>'+esc(p.username)+badge(p.verified)+'</strong></td><td>'+esc(p.display_name||"")+'</td><td>'+dateTime(p.created_at)+'</td><td><button class="btn small danger" data-player-action="ban" data-user="'+p.id+'">Bannen</button> <button class="btn small secondary" data-player-action="mute" data-user="'+p.id+'">Muten</button> <button class="btn small ghost" data-player-action="password" data-user="'+p.id+'">Passwort reset</button></td></tr>').join("");
+      const rows=(data??[]).map(p=>'<tr><td><strong>'+esc(p.display_name||p.username)+badge(p.verified)+'</strong></td><td>'+esc(p.username)+'</td><td>'+dateTime(p.created_at)+'</td><td><button class="btn small danger" data-player-action="ban" data-user="'+p.id+'">Bannen</button> <button class="btn small secondary" data-player-action="mute" data-user="'+p.id+'">Muten</button> <button class="btn small ghost" data-player-action="password" data-user="'+p.id+'">Passwort reset</button></td></tr>').join("");
       node.innerHTML='<div class="card"><h2>Spieler verwalten</h2><div class="table-wrap"><table><thead><tr><th>Username</th><th>Anzeigename</th><th>Erstellt</th><th>Aktionen</th></tr></thead><tbody>'+rows+'</tbody></table></div></div>';
     } else if(section==="bans"){
       const {data,error}=await db.from("bans").select("id,user_id,reason,starts_at,expires_at,profiles(username)").eq("active",true).order("starts_at",{ascending:false}).limit(100);if(error)throw error;
@@ -593,7 +593,7 @@ async function loadAdminSection(section) {
       }));
       const appMessages=appMsgResults.flat();
       node.innerHTML='<div class="card"><h2>Team-Bewerbungen</h2><div class="list">'+((data??[]).map(a=>{
-        const history=appMessages.filter(m=>m.application_id===a.id).map(m=>'<div class="chat-message"><div class="who">'+esc(m.profiles?.username||"Player")+' <span class="when">'+dateTime(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>').join("");
+        const history=appMessages.filter(m=>m.application_id===a.id).map(m=>'<div class="chat-message"><div class="who">'+esc(m.profiles?.display_name||m.profiles?.username||"Player")+' <span class="when">'+dateTime(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>').join("");
         return '<article class="list-item"><div class="item-head"><strong>'+esc(a.profiles?.username||"Player")+' · '+esc(a.desired_role)+'</strong><span class="pill">'+esc(a.status)+'</span></div><p>'+esc(a.reason)+'</p><div class="inline-meta">'+esc(a.experience||"Keine Erfahrung angegeben")+' · '+dateTime(a.created_at)+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch kein Nachrichtenverlauf.</div>')+'</div><form class="chat-compose" data-admin-app-message="'+a.id+'"><input class="input" name="message" maxlength="2000" placeholder="Private Nachricht an Bewerber …" required><button class="btn small">Senden</button></form><div class="action-group"><button class="btn small" data-application-status="accepted" data-id="'+a.id+'">Annehmen + Rang</button><button class="btn small danger" data-application-status="rejected" data-id="'+a.id+'">Ablehnen</button><button class="btn small ghost" data-application-status="reviewing" data-id="'+a.id+'">In Prüfung</button></div></article>';
       }).join("")||empty("Keine Bewerbungen vorhanden."))+'</div></div>';
     } else if(section==="building"){
@@ -604,7 +604,7 @@ async function loadAdminSection(section) {
       }));
       const orderMessages=orderMsgResults.flat();
       node.innerHTML='<div class="card"><h2>Building-Aufträge</h2><div class="list">'+((data??[]).map(o=>{
-        const history=orderMessages.filter(m=>m.order_id===o.id).map(m=>'<div class="chat-message"><div class="who">'+esc(m.profiles?.username||"Player")+' <span class="when">'+dateTime(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>').join("");
+        const history=orderMessages.filter(m=>m.order_id===o.id).map(m=>'<div class="chat-message"><div class="who">'+esc(m.profiles?.display_name||m.profiles?.username||"Player")+' <span class="when">'+dateTime(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>').join("");
         return '<article class="list-item"><div class="item-head"><strong>'+esc(o.title)+'</strong><span class="pill">'+esc(o.status)+'</span></div><p>'+esc(o.description)+'</p><div class="inline-meta">Von '+esc(o.profiles?.username||"Player")+' · Budget '+(o.budget===null?"offen":number(o.budget)+" ◆")+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch kein Nachrichtenverlauf.</div>')+'</div><form class="chat-compose" data-admin-building-message="'+o.id+'"><input class="input" name="message" maxlength="2000" placeholder="Private Nachricht an Spieler …" required><button class="btn small">Senden</button></form><div class="action-group">'+["reviewing","accepted","in_progress","completed","rejected"].map(s=>'<button class="btn small '+(s==="rejected"?"danger":"secondary")+'" data-building-status="'+s+'" data-id="'+o.id+'">'+s+'</button>').join("")+'</div></article>';
       }).join("")||empty("Keine Building-Aufträge."))+'</div></div>';
     } else if(section==="market"){
