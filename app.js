@@ -1,7 +1,7 @@
 "use strict";
 
 const CFG = window.KRAKE_CONFIG;
-const db = window.supabase.createClient(CFG.supabaseUrl, CFG.publishableKey);
+const db = window.supabase.createClient(CFG.supabaseUrl, CFG.publishableKey, { auth: { storage: window.sessionStorage, persistSession: true, autoRefreshToken: true, detectSessionInUrl: true } });
 const root = document.getElementById("app");
 const $ = (id) => document.getElementById(id);
 const esc = (value) => String(value ?? "").replace(/[&<>"']/g, c => ({
