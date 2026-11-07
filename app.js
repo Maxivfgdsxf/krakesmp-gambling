@@ -150,9 +150,8 @@ function shell(content) {
   ).join("");
   root.innerHTML = `
     <header class="topbar">
-      <button class="kraken-menu-btn" id="kraken-menu" aria-label="KRAKE Navigation öffnen" title="KRAKE Navigation">${KRAKEN_CREST}</button>
-      <a class="brand" href="#home"><span class="brand-logo house-brand" aria-hidden="true"><svg class="house-mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M8 30 32 9l24 21v24H38V40H26v14H8Z" fill="none" stroke="#ff5365" stroke-width="5" stroke-linejoin="round"/><path d="M23 29h18M26 36h12" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></span><span>KRAKE SMP</span>
-</div>
+      <a class="brand" href="#home" aria-label="KRAKE SMP Startseite"><span class="brand-logo house-brand" aria-hidden="true"><svg class="house-mark" viewBox="0 0 64 64" aria-hidden="true"><path d="M8 30 32 9l24 21v24H38V40H26v14H8Z" fill="none" stroke="#ff5365" stroke-width="5" stroke-linejoin="round"/><path d="M23 29h18M26 36h12" stroke="#fff" stroke-width="3" stroke-linecap="round"/></svg></span><span class="brand-word">KRAKE <span class="brand-smp">SMP</span></span></a>
+      <button type="button" class="kraken-menu-btn" id="kraken-menu" aria-label="KRAKE Navigation öffnen" aria-controls="drawer" aria-expanded="false" title="KRAKE Navigation">${KRAKEN_CREST}</button>
     </header>
     <div class="drawer" id="drawer">
       <div class="drawer-backdrop" id="drawer-back"></div>
@@ -178,15 +177,20 @@ function shell(content) {
   const drawer = $("drawer");
   const menuClose = $("menu-close");
   const drawerBack = $("drawer-back");
-  if(krakenMenu && drawer){
-    krakenMenu.onclick = (event) => {
+  const setDrawerOpen = (open) => {
+    if (!drawer) return;
+    drawer.classList.toggle("open", Boolean(open));
+    if (krakenMenu) krakenMenu.setAttribute("aria-expanded", String(Boolean(open)));
+  };
+  if (krakenMenu && drawer) {
+    krakenMenu.addEventListener("click", (event) => {
       event.preventDefault();
       event.stopPropagation();
-      drawer.classList.toggle("open");
-    };
+      setDrawerOpen(!drawer.classList.contains("open"));
+    });
   }
-  if(menuClose) menuClose.onclick = closeDrawer;
-  if(drawerBack) drawerBack.onclick = closeDrawer;
+  if (menuClose) menuClose.addEventListener("click", () => setDrawerOpen(false));
+  if (drawerBack) drawerBack.addEventListener("click", () => setDrawerOpen(false));
   
   $("site-search")?.addEventListener("keydown",event=>{
     if(event.key!=="Enter")return;
