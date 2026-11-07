@@ -1145,3 +1145,18 @@ body{background:radial-gradient(circle at 50% -12%,#3a0915 0,#14070c 30%,#080609
   stroke-linecap:round;
   stroke-linejoin:round;
 }
+
+
+/* KRAKE admin + Minecraft-inspirierte Markt-Icons */
+.admin-nav-symbol .admin-aura{margin-left:0;width:22px;height:22px;transform-origin:center}
+.admin-nav-symbol .admin-aura:after{animation:adminAuraOrbit 2.4s linear infinite,adminAura 1.8s ease-in-out infinite}
+.admin-nav-symbol .admin-aura:before{animation:adminShieldPulse 1.8s ease-in-out infinite}
+.admin-nav-symbol .admin-aura i{animation:adminCoreFlash 1.2s ease-in-out infinite}
+@keyframes adminAuraOrbit{to{transform:rotate(360deg)}}
+@keyframes adminShieldPulse{0%,100%{transform:scale(.92)}50%{transform:scale(1.08)}}
+@keyframes adminCoreFlash{0%,100%{opacity:.65;transform:scale(.8)}50%{opacity:1;transform:scale(1.2)}}
+.eco-stock-title{display:flex;gap:10px;align-items:flex-start;min-width:0}
+.eco-item-icon{display:grid;place-items:center;flex:0 0 42px;width:42px;height:42px;border:1px solid rgba(255,83,101,.25);border-radius:10px;background:linear-gradient(145deg,#19151b,#0b0b0e);font-size:25px;line-height:1;box-shadow:inset 0 0 0 1px rgba(255,255,255,.03),0 0 12px rgba(255,45,70,.08);image-rendering:pixelated}
+.eco-item-icon{text-shadow:2px 2px 0 rgba(0,0,0,.65);transition:transform .18s ease,box-shadow .18s ease}
+.eco-stock:hover .eco-item-icon{transform:translateY(-1px) scale(1.04);box-shadow:inset 0 0 0 1px rgba(255,255,255,.05),0 0 18px rgba(255,45,70,.16)}
+@media(prefers-reduced-motion:reduce){.admin-nav-symbol .admin-aura:after,.admin-nav-symbol .admin-aura:before,.admin-nav-symbol .admin-aura i{animation:none}.eco-item-icon{transition:none}}
