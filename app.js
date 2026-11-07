@@ -307,332 +307,132 @@ async function renderLogin() {
   `;
 }
 
+function chatMessageMarkup(m) {
+  const name=m.profiles?.display_name||m.profiles?.username||"Player";
+  const report=currentUser&&currentUser.id!==m.user_id?'<button type="button" class="btn ghost small" data-report="'+m.id+'">Melden</button>':"";
+  const moderation=isAdmin()?'<button type="button" class="btn ghost small danger" data-chat-delete="'+m.id+'">Löschen</button><button type="button" class="btn ghost small" data-chat-mute="'+m.user_id+'">Timeout</button><button type="button" class="btn ghost small danger" data-chat-ban="'+m.user_id+'">Sperren</button>':"";
+  return '<article class="chat-message" data-message-id="'+m.id+'"><div class="chat-message-head"><span class="who">'+esc(name)+roleBadges(m.profiles?.roles)+badge(m.profiles?.verified)+'</span><span class="when">'+dateTime(m.created_at)+'</span><div class="chat-actions">'+report+moderation+'</div></div><p>'+esc(m.message)+'</p></article>';
+}
 async function renderChat() {
-  const {data:chatSetting}=await db.from("chat_settings").select("mode,slow_seconds").eq("id",1).maybeSingle();
-  const messages = await db.from("chat_messages")
-    .select("id,user_id,message,created_at")
-    .is("deleted_at",null).order("created_at",{ascending:false}).limit(100);
-  if (messages.error) throw messages.error;
-
+  const {data:chatSetting,error:settingError}=await db.from("chat_settings").select("mode,slow_seconds").eq("id",1).maybeSingle();
+  if(settingError)console.warn("Chat settings unavailable:",settingError.message);
+  const messages=await db.from("chat_messages").select("id,user_id,message,created_at").is("deleted_at",null).order("created_at",{ascending:false}).limit(100);
+  if(messages.error)throw messages.error;
   const rows=(messages.data??[]).reverse();
   const ids=[...new Set(rows.map(m=>m.user_id).filter(Boolean))];
   let profilesById=new Map();
-  let rolesById=new Map();
   if(ids.length){
     const {data:profilesData,error:profilesError}=await db.from("profiles").select("id,username,display_name,verified").in("id",ids);
-    const {data:roleRows}=await db.from("user_roles").select("user_id,roles(name,display_name,priority)").in("user_id",ids);
+    const {data:roleRows,error:roleError}=await db.from("user_roles").select("user_id,roles(name,display_name,priority)").in("user_id",ids);
+    if(profilesError)throw profilesError;
+    if(roleError)console.warn("Chat role lookup failed:",roleError.message);
+    const rolesById=new Map();
     (roleRows??[]).forEach(r=>{if(!rolesById.has(r.user_id))rolesById.set(r.user_id,[]);if(r.roles)rolesById.get(r.user_id).push(r.roles);});
-    if(profilesError) console.warn("Chat profile lookup failed:",profilesError.message);
     profilesById=new Map((profilesData??[]).map(p=>[p.id,{...p,roles:rolesById.get(p.id)||[]}]));
   }
   lastChatMessages=rows.map(m=>({...m,profiles:profilesById.get(m.user_id)||null}));
-  const items=lastChatMessages.map(m=>`
-    <article class="chat-message">
-      <div><span class="who">${esc(m.profiles?.display_name||m.profiles?.username||"Player")}${roleBadges(m.profiles?.roles)}${badge(m.profiles?.verified)}</span><span class="when">${dateTime(m.created_at)}</span>
-      ${currentUser && currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':""}${isAdmin()?'<button class="btn ghost small danger" data-chat-delete="'+m.id+'">Löschen</button><button class="btn ghost small" data-chat-mute="'+m.user_id+'">Timeout</button><button class="btn ghost small danger" data-chat-ban="'+m.user_id+'">Sperren</button>':""}</div>
-      <p>${esc(m.message)}</p>
-    </article>
-  `).join("");
-  const mode=chatSetting?.mode||"normal";const modeLabel=mode==="admin"?"Nur Admins":mode==="media"?"Media-Modus":mode==="slow"?"Slow Mode":"Normal";const modeNotice='<div class="notice chat-mode-notice"><strong>Chat-Modus: '+modeLabel+'</strong>'+(mode==="slow"?' · '+number(chatSetting?.slow_seconds||5)+' Sekunden zwischen deinen Nachrichten':"")+'</div>';
-  return pageHead("COMMUNITY","Globaler Chat","Schreib mit der KRAKE Community. Chat-Regeln gelten für alle Mitglieder.")+modeNotice+
-    '<section class="card"><div class="chat-window" id="chat-window">'+(items||empty("Noch keine Nachrichten. Starte die Unterhaltung!"))+'</div>'+
+  const items=lastChatMessages.map(chatMessageMarkup).join("");
+  const mode=chatSetting?.mode||"normal";
+  const modeLabel=mode==="admin"?"Nur Admins":mode==="media"?"Media-Modus":mode==="slow"?"Slow Mode":"Normal";
+  const modeNotice='<div class="notice chat-mode-notice"><strong>Chat-Modus: '+modeLabel+'</strong>'+(mode==="slow"?' · '+number(chatSetting?.slow_seconds||5)+' Sekunden zwischen deinen Nachrichten':"")+'</div>';
+  return pageHead("COMMUNITY","Globaler Chat","Schreib mit der KRAKE Community. Chat-Regeln gelten für alle Mitglieder.")+
+    modeNotice+'<section class="card"><div class="chat-window" id="chat-window">'+(items||empty("Noch keine Nachrichten. Starte die Unterhaltung!"))+'</div>'+
     (currentUser?'<form id="chat-form" class="chat-compose"><input class="input" id="chat-input" maxlength="2000" placeholder="Nachricht schreiben …" required><button class="btn" type="submit">Senden</button></form>':'<div class="notice" style="margin-top:12px">Zum Schreiben bitte <button class="btn small" data-route="login">anmelden</button>.</div>')+
     '<p class="form-note">Nachrichten werden moderiert. Melde problematische Inhalte über „Melden“.</p></section>';
 }
-function placementRP(rank){const points=[100,75,60,50,45,40,35,30,25,20];return points[rank-1]??15;}
-function leaderboardSort(a,b){if(a.bestTime!==null&&b.bestTime!==null&&a.bestTime!==b.bestTime)return a.bestTime-b.bestTime;if(a.bestTime!==null&&b.bestTime===null)return -1;if(a.bestTime===null&&b.bestTime!==null)return 1;const s=Number(b.score||0)-Number(a.score||0);return s!==0?s:Number(b.rounds||0)-Number(a.rounds||0);}
-function buildLeaderboardGroups(games,results){const groups=new Map((games??[]).map(g=>[g.id,new Map()]));for(const r of results??[]){const p=groups.get(r.minigame_id);if(!p)continue;const cur=p.get(r.user_id);const time=Number(r.time_ms)>0?Number(r.time_ms):null;if(!cur)p.set(r.user_id,{...r,rounds:1,bestTime:time});else{cur.rounds++;if(time!==null&&(cur.bestTime===null||time<cur.bestTime))cur.bestTime=time;if(Number(r.score||0)>Number(cur.score||0))cur.score=r.score;if(r.profiles)cur.profiles=r.profiles;}}const rpByUser=new Map();for(const g of games??[]){[...(groups.get(g.id)||new Map()).values()].sort(leaderboardSort).slice(0,25).forEach((p,i)=>{p.placement=i+1;p.placementRP=placementRP(i+1);rpByUser.set(p.user_id,(rpByUser.get(p.user_id)||0)+p.placementRP);});}return {groups,rpByUser};}
-
-async function renderLeaderboards(){const {data:games,error:ge}=await db.from("minigames").select("id,slug,name,description").eq("active",true).order("name");if(ge)throw ge;const {data:results,error:re}=await db.from("minigame_results").select("minigame_id,user_id,score,time_ms,won,created_at,profiles(username,display_name,verified)").order("created_at",{ascending:false}).limit(5000);if(re)throw re;const ids=[...new Set((results??[]).map(r=>r.user_id).filter(Boolean))];const roles=new Map();if(ids.length){const {data:rr}=await db.from("user_roles").select("user_id,roles(name,display_name,priority)").in("user_id",ids);(rr??[]).forEach(r=>{if(!roles.has(r.user_id))roles.set(r.user_id,[]);if(r.roles)roles.get(r.user_id).push(r.roles);});}(results??[]).forEach(r=>{r.profiles={...(r.profiles||{}),roles:roles.get(r.user_id)||[]};});const {groups,rpByUser}=buildLeaderboardGroups(games,results);const time=ms=>{if(ms===null||ms===undefined)return"—";const n=Math.round(Number(ms));return n>=1000?(n/1000).toFixed(2)+" s":n+" ms";};const global=new Map();for(const g of games??[])for(const p of (groups.get(g.id)||new Map()).values())if(!global.has(p.user_id))global.set(p.user_id,p);const globalRows=[...global.values()].sort((a,b)=>(rpByUser.get(b.user_id)||0)-(rpByUser.get(a.user_id)||0)).slice(0,25);const globalBody=globalRows.map((p,i)=>'<tr><td><span class="rank '+(i<3?["gold","silver","bronze"][i]:"")+'">'+(i+1)+'</span></td><td><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong> '+roleBadges(p.profiles?.roles)+' '+badge(p.profiles?.verified)+'</td><td><strong>'+number(rpByUser.get(p.user_id)||0)+' RP</strong></td></tr>').join("");const cards=(games??[]).map((g,index)=>{const rows=[...(groups.get(g.id)||new Map()).values()].sort(leaderboardSort).slice(0,25);const body=rows.map((p,i)=>'<tr><td><span class="rank '+(i<3?["gold","silver","bronze"][i]:"")+'">'+(i+1)+'</span></td><td><strong>'+esc(p.profiles?.display_name||p.profiles?.username||"Player")+'</strong> '+roleBadges(p.profiles?.roles)+' '+badge(p.profiles?.verified)+'</td><td><strong>'+time(p.bestTime)+'</strong></td><td><strong>'+number(p.placementRP)+' RP</strong></td><td>'+number(p.rounds)+'</td></tr>').join("");return '<section class="leaderboard-game card" data-board="'+esc(g.slug)+'" '+(index?"hidden":"")+'><div class="section-head"><div><div class="eyebrow">KRAKE COMPETITIVE</div><h2>'+esc(g.name)+' Leaderboard</h2><p>'+esc(g.description||"Spieler-Rankings")+'</p></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>Bestzeit</th><th>RP</th><th>Runden</th></tr></thead><tbody>'+(body||'<tr><td colspan="5">Noch keine Ergebnisse.</td></tr>')+'</tbody></table></div></section>';}).join("");const tabs=(games??[]).map((g,i)=>'<button class="leaderboard-tab '+(!i?"active":"")+'" data-leaderboard-game="'+esc(g.slug)+'">'+esc(g.name)+'</button>').join("");return pageHead("COMPETITIVE","Leaderboards","RP wird automatisch aus deinen Platzierungen berechnet.")+'<section class="card leaderboard-global"><div class="section-head"><div><div class="eyebrow">RANKING POINTS</div><h2>Globales RP Ranking</h2></div><span class="pill red">TOP 25</span></div><div class="table-wrap"><table><thead><tr><th>#</th><th>Spieler</th><th>RP</th></tr></thead><tbody>'+(globalBody||'<tr><td colspan="3">Noch keine Platzierungen.</td></tr>')+'</tbody></table></div></section><section class="card leaderboard-shell"><div class="leaderboard-tabs">'+tabs+'</div><div class="leaderboard-panels">'+cards+'</div></section>';}
-async function renderMarket() {
-  const [items,prices]=await Promise.all([
-    db.from("market_items").select("id,symbol,name,description,stock").eq("active",true).order("name"),
-    db.from("market_prices").select("item_id,price,created_at").order("created_at",{ascending:true}).limit(1000)
-  ]);
-  if(items.error)throw items.error;if(prices.error)throw prices.error;
-  const histories=new Map();
-  for(const p of (prices.data??[])){if(!histories.has(p.item_id))histories.set(p.item_id,[]);histories.get(p.item_id).push(p);}
-  const art=(symbol)=>symbol==="SKELETON"?"☠️":symbol==="ELYTRA_ENCH"?"🪽":symbol==="ELYTRA"?"🪽":"🍎";
-  const cards=(items.data??[]).map(item=>{
-    const history=histories.get(item.id)||[];
-    const latest=history.at(-1);
-    const first=history[0]?.price ?? latest?.price ?? 0;
-    const change=first ? ((Number(latest?.price||0)-Number(first))/Number(first))*100 : 0;
-    const pts=history.slice(-12).map((p,i)=>(i*12)+","+(50-Math.max(-42,Math.min(42,((Number(p.price)-Number(first))/(Number(first)||1))*42)))).join(" ");
-    const chart=pts ? '<svg class="price-chart" viewBox="0 0 132 60" preserveAspectRatio="none"><polyline points="'+pts+'" fill="none" stroke="currentColor" stroke-width="3" vector-effect="non-scaling-stroke"/></svg>' : "";
-    return '<article class="market-card card"><div class="market-art market-art-'+esc(item.symbol)+'"><span>'+art(item.symbol)+'</span></div><div class="market-card-body"><div class="eyebrow">INGAME MARKET</div><h2>'+esc(item.name)+'</h2><p>'+esc(item.description||"Minecraft Item")+'</p><div class="market-stock"><span>STOCK</span><strong>'+number(item.stock||0)+'</strong><small>im Lager</small></div><div class="market-price-row"><strong>'+compactPrice(latest?.price||0)+'</strong><span class="price-change '+(change>=0?"up":"down")+'">'+(change>=0?"+":"")+change.toFixed(1)+'% seit Start</span></div><div class="market-trend">'+chart+'<div><small>Start</small><b>'+compactPrice(first)+'</b></div><div><small>Aktuell</small><b>'+compactPrice(latest?.price||0)+'</b></div></div><button class="btn market-ticket-btn" data-market-ticket="'+item.id+'">Dieses Item anfragen</button></div></article>';
-  }).join("");
-  return pageHead("INGAME MARKET","KRAKE Market","Hier werden echte Ingame-Items gehandelt. Preise setzt du selbst im Admin Panel. Kein Website-Guthaben.")+
-    '<div class="market-note"><span>◆</span><div><strong>Preisübersicht</strong><p>Preise werden als Ingame-Werte wie <b>2b</b>, <b>750m</b> oder <b>500k</b> angezeigt. Klick auf ein Item, wenn du es kaufen möchtest – daraus wird direkt ein Ticket für das Team.</p></div></div>'+
-    '<section class="market-grid">'+(cards||empty("Noch keine Markt-Items vorhanden."))+'</section>';
-}
-async function renderMinigames() {
-  const {data:games,error}=await db.from("minigames").select("id,slug,name,description").eq("active",true).order("name");
-  if(error)throw error;
-  const icons={reaction:"⚡",speed:"⏱️",duel:"⚔️",memory:"🧠",aim:"🎯",quiz:"❓",decision:"⚖️"};
-  const cards=(games??[]).map(g=>'<article class="game-card card"><div class="game-icon">'+(icons[g.slug]||"🎮")+'</div><div><span class="pill green">FREIGESCHALTET</span><h2>'+esc(g.name)+'</h2><p>'+esc(g.description||"Challenge")+'</p></div><button class="btn small" data-game-start="'+esc(g.slug)+'">Spielen</button></article>').join("");
-  return pageHead("QUICK COMPETITION","Minigames","Alle KRAKE Minigames sind spielbar – jedes Ergebnis landet im eigenen Leaderboard.")+
-    '<section class="games-grid">'+cards+'</section>'+
-    '<section class="card game-stage" id="game-stage" hidden><div class="section-head"><div><div class="eyebrow">LIVE GAME</div><h2 id="game-title">Minigame</h2><p id="game-description"></p></div><button class="btn ghost" id="game-close">Schließen</button></div><div id="game-area"></div></section>';
-}
-async function renderEvents() {
-  const {data,error}=await db.from("events").select("name,description,banner_url,starts_at,ends_at,active,config").order("starts_at",{ascending:false});
-  if(error)throw error;
-  const items=(data??[]).map(e=>'<article class="card"><div class="item-head"><span class="pill '+(e.active?"red":"")+'">'+(e.active?"AKTIV":"GEPLANT")+'</span><span class="form-note">'+dateTime(e.starts_at)+'</span></div><h2 style="margin-top:14px">'+esc(e.name)+'</h2><p>'+esc(e.description||"Weitere Informationen folgen.")+'</p>'+(e.ends_at?'<div class="form-note">Endet: '+dateTime(e.ends_at)+'</div>':"")+'</article>').join("");
-  return pageHead("SEASONAL","Events","Jahreszeiten, SMP-Specials und Community-Aktionen.")+'<div class="grid">'+(items||empty("Momentan ist kein Event eingetragen. Das Portal bleibt das ganze Jahr über im KRAKE-Design."))+'</div>';
-}
-
-async function renderBuilding() {
-  if(!currentUser)return pageHead("PLAYER SERVICE","Building Service","Reiche deinen Bauauftrag ein und bespreche Details privat mit dem Team.")+'<div class="card">'+empty("Melde dich an, um einen Building-Auftrag zu erstellen.")+'<button class="btn" data-route="login">Anmelden</button></div>';
-  const {data:orders,error}=await db.from("building_orders").select("id,title,description,budget,status,created_at").eq("user_id",currentUser.id).order("created_at",{ascending:false});
-  if(error)throw error;
-  const messageResults=await Promise.all((orders??[]).map(async o=>{
-    const {data,error}=await db.rpc("building_message_history",{p_order_id:o.id});
-    if(error)throw error;return data??[];
-  }));
-  const orderMessages=messageResults.flat();
-  const cards=(orders??[]).map(o=>{
-    const history=orderMessages.filter(m=>m.order_id===o.id).map(m=>'<div class="chat-message"><div class="who">'+esc(m.username||"Team")+' <span class="when">'+dateTime(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>').join("");
-    return '<article class="list-item"><div class="item-head"><strong>'+esc(o.title)+'</strong><span class="pill">'+esc(o.status)+'</span></div><p>'+esc(o.description)+'</p><div class="inline-meta">Budget: '+(o.budget===null?"Offen":number(o.budget))+' · '+dateTime(o.created_at)+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch keine Nachrichten vom Team.</div>')+'</div><form class="chat-compose" data-building-message="'+o.id+'"><input class="input" name="message" maxlength="2000" placeholder="Nachricht an das Team …" required><button class="btn small">Senden</button></form></article>';
-  }).join("");
-  return pageHead("PLAYER SERVICE","Building Service","Was soll gebaut werden? Das Team kann den Status aktualisieren und mit dir schreiben.")+
-    '<div class="grid two"><section class="card"><h2>Neuen Auftrag erstellen</h2><form class="form" id="building-form"><div class="field"><label>Titel</label><input class="input" name="title" maxlength="100" required></div><div class="field"><label>Beschreibung</label><textarea name="description" maxlength="4000" required></textarea></div><div class="field"><label>Budget (optional)</label><input class="input" name="budget" type="number" min="0"></div><button class="btn">Auftrag senden</button></form></section><section class="card"><h2>Deine Aufträge</h2><div class="list">'+(cards||empty("Du hast noch keine Aufträge erstellt."))+'</div></section></div>';
-}
-
-async function renderApplications() {
-  if(!currentUser)return pageHead("JOIN THE TEAM","Team bewerben","Bewirb dich als Helper, Moderator oder Media.")+'<div class="card">'+empty("Melde dich an, um dich fürs Team zu bewerben.")+'<button class="btn" data-route="login">Anmelden</button></div>';
-  const {data,error}=await db.from("applications").select("id,desired_role,reason,experience,status,created_at").eq("user_id",currentUser.id).order("created_at",{ascending:false});
-  if(error)throw error;
-  const messageResults=await Promise.all((data??[]).map(async a=>{
-    const {data,error}=await db.rpc("application_message_history",{p_application_id:a.id});
-    if(error)throw error;return (data??[]).map(m=>({...m,application_id:a.id}));
-  }));
-  const applicationMessages=messageResults.flat();
-  const cards=(data??[]).map(a=>{
-    const history=applicationMessages.filter(m=>m.application_id===a.id).map(m=>'<div class="chat-message"><div class="who">'+esc(m.profiles?.username||"Team")+' <span class="when">'+dateTime(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>').join("");
-    return '<article class="list-item"><div class="item-head"><strong>'+esc(a.desired_role)+'</strong><span class="pill">'+esc(a.status)+'</span></div><p>'+esc(a.reason)+'</p><div class="inline-meta">'+dateTime(a.created_at)+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch keine Rückfragen vom Team.</div>')+'</div><form class="chat-compose" data-application-message="'+a.id+'"><input class="input" name="message" maxlength="2000" placeholder="Nachricht zur Bewerbung …" required><button class="btn small">Senden</button></form></article>';
-  }).join("");
-  return pageHead("JOIN THE TEAM","Team bewerben","Team-Anträge sind nur für Teamrollen vorgesehen. Das Team prüft deine Bewerbung.")+
-    '<div class="grid two"><section class="card"><h2>Bewerbung erstellen</h2><form class="form" id="application-form"><div class="field"><label>Gewünschte Rolle</label><select name="desired_role"><option value="helper">Helper</option><option value="moderator">Moderator</option><option value="media">Media</option></select></div><div class="field"><label>Warum möchtest du ins Team?</label><textarea name="reason" minlength="30" maxlength="4000" required></textarea></div><div class="field"><label>Erfahrung (optional)</label><textarea name="experience" maxlength="3000"></textarea></div><button class="btn">Bewerbung senden</button></form></section><section class="card"><h2>Deine Bewerbungen</h2><div class="list">'+(cards||empty("Noch keine Bewerbungen vorhanden."))+'</div></section></div>';
-}
-
-async function renderProfile() {
-  if(!currentUser)return pageHead("ACCOUNT","Profil","Melde dich an, um dein Profil anzusehen.")+'<div class="card">'+empty("Du bist noch nicht angemeldet.")+'<button class="btn" data-route="login">Anmelden</button></div>';
-  const [stats,minecraft,roles]=await Promise.all([
-    db.from("player_statistics").select("*").eq("user_id",currentUser.id).maybeSingle(),
-    db.from("minecraft_accounts").select("minecraft_name,verification_status,verified_at").eq("user_id",currentUser.id).maybeSingle(),
-    db.from("user_roles").select("roles(display_name,name)").eq("user_id",currentUser.id)
-  ]);
-  const roleNames=(roles.data??[]).map(r=>r.roles?.display_name||r.roles?.name).filter(Boolean).join(", ")||"User";
-  return pageHead("PLAYER ID","Profil","Deine KRAKE SMP Community-Identität.")+
-    '<section class="card"><div class="item-head"><div><div class="eyebrow">MEMBER PROFILE</div><h2>'+esc(profile?.display_name||profile?.username||"Player")+badge(profile?.verified)+'</h2><div class="muted">@'+esc(profile?.username||"")+'</div></div><span class="pill red">'+esc(roleNames)+'</span></div><div class="section grid four"><div class="card stat-card"><div class="stat-label">Wins</div><div class="stat-number">'+number(stats.data?.wins)+'</div></div><div class="card stat-card"><div class="stat-label">Games</div><div class="stat-number">'+number(stats.data?.games_played)+'</div></div><div class="card stat-card"><div class="stat-label">Rating</div><div class="stat-number">'+number(stats.data?.rating??1000)+'</div></div></div><div class="section grid two"><div class="list-item"><div class="muted">Minecraft Account</div><strong>'+esc(minecraft.data?.minecraft_name||"Nicht verknüpft")+'</strong><div class="inline-meta">Status: '+esc(minecraft.data?.verification_status||"unverified")+'</div></div><div class="list-item"><div class="muted">Mitglied seit</div><strong>'+dateTime(profile?.created_at)+'</strong><div class="inline-meta">Letzter Login: '+dateTime(profile?.last_login_at)+'</div></div></div><div class="action-row"><button class="btn secondary" data-route="settings">Einstellungen</button><button class="btn ghost" id="logout-btn">Abmelden</button></div></section>';
-}
-
-async function renderSettings() {
-  if(!currentUser)return pageHead("ACCOUNT CONTROL","Einstellungen","Melde dich an, um deine Einstellungen zu verwalten.")+'<div class="card">'+empty("Bitte zuerst anmelden.")+'<button class="btn" data-route="login">Anmelden</button></div>';
-  const {data:mc}=await db.from("minecraft_accounts").select("minecraft_name,verification_status,verified_at").eq("user_id",currentUser.id).maybeSingle();
-  const {data:req}=await db.from("verification_requests").select("minecraft_name,status,requested_at").eq("user_id",currentUser.id).order("requested_at",{ascending:false}).limit(1).maybeSingle();
-  return pageHead("ACCOUNT CONTROL","Einstellungen","Profil, Minecraft-Verknüpfung und Sicherheit.")+
-    '<div class="grid two"><section class="card"><h2>Profil bearbeiten</h2><form class="form" id="profile-form"><div class="field"><label>Anzeigename</label><input class="input" name="display_name" maxlength="32" value="'+esc(profile?.display_name||profile?.username||"")+'"></div><button class="btn">Speichern</button></form></section><section class="card"><h2>Minecraft Account</h2><p class="muted">Die Eingabe eines Namens ist keine automatische Verifizierung. Das Team prüft jeden Antrag manuell.</p><div class="notice">Aktueller Status: <strong>'+esc(mc?.verification_status||req?.status||"Nicht verifiziert")+'</strong>'+(mc?.minecraft_name?' · '+esc(mc.minecraft_name):req?.minecraft_name?' · '+esc(req.minecraft_name):"")+'</div><form class="form" id="verification-form" style="margin-top:12px"><div class="field"><label>Minecraft Java Name</label><input class="input" name="minecraft_name" pattern="[A-Za-z0-9_]{3,16}" maxlength="16" required placeholder="DeinMinecraftName"></div><button class="btn">Verifizierung anfordern</button></form></section><section class="card"><h2>Sicherheit</h2><p class="muted">Passwörter werden ausschließlich von Supabase Auth gehasht gespeichert. Admins können ein Passwort zurücksetzen, aber niemals dein Klartext-Passwort auslesen.</p><div class="pill green">Sichere Sessions aktiv</div><div class="pill">Kein 2FA-Zwang</div></section><section class="card"><h2>Account</h2><p class="muted">Username: <strong>'+esc(profile?.username||"")+'</strong><br>Erstellt: '+dateTime(profile?.created_at)+'</p><button class="btn ghost" id="settings-logout">Abmelden</button></section></div>';
-}
-
-async function renderMarketTickets() {
-  if(!currentUser)return pageHead("MARKET","Market Tickets","Melde dich an, um deine Tickets zu sehen.")+'<div class="card">'+empty("Bitte anmelden.")+'</div>';
-  const {data,error}=await db.from("market_tickets").select("id,quantity,message,status,created_at,updated_at,market_items(name,symbol)").eq("user_id",currentUser.id).order("created_at",{ascending:false});
-  if(error)throw error;
-  const cards=(data??[]).map(t=>'<article class="ticket-row" data-ticket-open="'+t.id+'"><div class="ticket-main"><div class="item-head"><strong>'+esc(t.market_items?.name||"Item")+'</strong><span class="pill '+(t.status==="open"?"red":"")+'">'+esc(t.status)+'</span></div><p>'+number(t.quantity)+'× · '+esc(t.message||"Keine Nachricht")+'</p><small>Ticket #'+t.id+' · '+dateTime(t.created_at)+'</small></div><div class="ticket-arrow">›</div></article>').join("");
-  return pageHead("MARKET","Deine Market Tickets","Klick auf ein Ticket, um den Verlauf zu öffnen und mit dem Team zu schreiben.")+'<section class="card"><div class="ticket-list">'+(cards||empty("Noch keine Market-Tickets."))+'</div></section>';
-}
-async function renderImpressum() {
-  return pageHead("LEGAL","Impressum","Informationen zum Projekt.")+'<section class="card"><h2>KRAKE SMP</h2><p class="muted">Made by Dev Mundi.</p></section>';
-}
-async function renderAdmin() {
-  if(!currentUser)return pageHead("RESTRICTED","Admin Panel","Nur für autorisierte Teammitglieder.")+'<div class="card">'+empty("Bitte anmelden.")+'<button class="btn" data-route="login">Anmelden</button></div>';
-  if(!isAdmin())return pageHead("RESTRICTED","Kein Zugriff","Dein Account besitzt keine Admin-Berechtigung.")+'<div class="card">'+empty("Das Admin Panel ist serverseitig geschützt.")+'</div>';
-  return pageHead("CONTROL CENTER","Admin Panel","Serverseitig abgesicherte Verwaltung und Audit-Protokoll.")+
-    '<section class="card"><div class="admin-tabs">'+[
-      ["overview","Dashboard"],["players","Players"],["bans","Bans"],["verifications","Minecraft"],["applications","Bewerbungen"],["building","Building"],["market","Market"],["market_tickets","Market Tickets"],["chat","Chat Reports"],["roles","Rollen"],["audit","Audit Logs"],["maintenance","Maintenance"],["console","Admin Console"]
-    ].map(([k,v])=>'<button data-admin-tab="'+k+'" class="'+(adminSection===k?"active":"")+'">'+v+'</button>').join("")+'</div><div id="admin-content" class="admin-layout">'+empty("Bereich wird geladen …")+'</div></section>';
-}
-
-async function renderPage() {
-  if(activeChatChannel){await db.removeChannel(activeChatChannel);activeChatChannel=null;}
-  if(chatPollTimer){clearInterval(chatPollTimer);chatPollTimer=null;}
-  if(reactionTimeout){clearTimeout(reactionTimeout);reactionTimeout=null;}
-  const route=(location.hash.slice(1)||"home").split("?")[0].split("/")[0];
-  currentRoute=route;
-  let content="";
-  try {
-    if(route==="login")content=await renderLogin();
-    else if(route==="chat")content=await renderChat();
-    else if(route==="leaderboards")content=await renderLeaderboards();
-    else if(route==="market")content=await renderMarket();
-    else if(route==="minigames")content=await renderMinigames();
-    else if(route==="events")content=await renderEvents();
-    else if(route==="building")content=await renderBuilding();
-    else if(route==="applications")content=await renderApplications();
-    else if(route==="profile")content=await renderProfile();
-    else if(route==="settings")content=await renderSettings();
-    else if(route==="admin")content=await renderAdmin();
-    else if(route==="market-tickets")content=await renderMarketTickets();
-    else if(route==="impressum")content=await renderImpressum();
-    else {currentRoute="home";content=await renderHome();}
-  } catch(error) {
-    console.error(error);
-    content='<section class="card"><div class="eyebrow">SYSTEM</div><h2>Dieser Bereich konnte nicht geladen werden.</h2><p class="muted">'+esc(error.message)+'</p><button class="btn secondary" data-route="home">Zur Startseite</button></section>';
-  }
-  shell(content);
-  wirePage(route);
-  if(route==="admin" && isAdmin()) await loadAdminSection(adminSection);
-}
-
-function openMarketTicketCreator(itemId,itemName){
-  const old=$("ticket-create-modal");old?.remove();
-  const modal=document.createElement("div");modal.id="ticket-create-modal";modal.className="krake-modal";
-  modal.innerHTML='<div class="krake-modal-backdrop"></div><div class="krake-modal-card"><button class="modal-close" type="button">×</button><div class="eyebrow">MARKET REQUEST</div><h2>'+esc(itemName)+'</h2><p class="muted">Minecraft-Ingame-Item · Anfrage direkt ans Team</p><form id="ticket-create-form" class="form"><div class="quantity-picker"><button type="button" data-qty="-1">−</button><div><small>MENGE</small><strong id="ticket-qty">1</strong></div><button type="button" data-qty="1">+</button></div><input class="input" id="ticket-message" maxlength="2000" placeholder="Nachricht an das Team (optional)" value="Ich möchte dieses Item kaufen."><div class="action-row"><button type="button" class="btn secondary modal-cancel">Abbrechen</button><button class="btn">Ticket erstellen</button></div></form></div></div>';
-  document.body.appendChild(modal);
-  let qty=1;
-  const close=()=>modal.remove();
-  modal.querySelector(".modal-close").onclick=close;modal.querySelector(".modal-cancel").onclick=close;modal.querySelector(".krake-modal-backdrop").onclick=close;
-  modal.querySelectorAll("[data-qty]").forEach(b=>b.onclick=()=>{qty=Math.max(1,Math.min(999,qty+Number(b.dataset.qty)));$("ticket-qty").textContent=qty;});
-  modal.querySelector("#ticket-create-form").onsubmit=async e=>{e.preventDefault();const message=$("ticket-message").value.trim();const {error}=await db.from("market_tickets").insert({user_id:currentUser.id,item_id:itemId,quantity:qty,message:message.slice(0,2000)});if(error)toast(error.message,"error");else{close();toast("Ticket erstellt. Öffne es jederzeit über Market Tickets.","success");await renderPage();}};
-}
-function openMarketTicket(ticketId){
-  if(!currentUser)return;
-  const old=$("ticket-modal");old?.remove();
-  const modal=document.createElement("div");modal.id="ticket-modal";modal.className="krake-modal";
-  modal.innerHTML='<div class="krake-modal-backdrop"></div><div class="krake-modal-card ticket-modal-card"><button class="modal-close" type="button">×</button><div id="ticket-modal-content"><div class="muted">Ticket wird geladen …</div></div></div>';
-  document.body.appendChild(modal);
-  const close=()=>modal.remove();modal.querySelector(".modal-close").onclick=close;modal.querySelector(".krake-modal-backdrop").onclick=close;
-  (async()=>{
-    const [{data:t,error:te},{data:messages,error:me}]=await Promise.all([
-      db.from("market_tickets").select("id,user_id,quantity,message,status,created_at,market_items(name,symbol),profiles(username,display_name)").eq("id",ticketId).maybeSingle(),
-      db.from("market_ticket_messages").select("id,user_id,message,created_at").eq("ticket_id",ticketId).order("created_at")
-    ]);
-    if(te)throw te;if(me)throw me;
-    const ids=[...new Set((messages??[]).map(m=>m.user_id).concat(t?.user_id||[]).filter(Boolean))];
-    let pm=new Map();if(ids.length){const {data:p}=await db.from("profiles").select("id,username,display_name").in("id",ids);pm=new Map((p??[]).map(x=>[x.id,x]));}
-    const history=(messages??[]).map(m=>'<div class="ticket-message '+(m.user_id===currentUser.id?"mine":"")+'"><strong>'+esc(pm.get(m.user_id)?.display_name||pm.get(m.user_id)?.username||"Player")+'</strong><span>'+dateTime(m.created_at)+'</span><p>'+esc(m.message)+'</p></div>').join("");
-    $("ticket-modal-content").innerHTML='<div class="eyebrow">TICKET #'+t.id+'</div><div class="item-head"><h2>'+esc(t.market_items?.name||"Market Item")+'</h2><span class="pill '+(t.status==="open"?"red":"")+'">'+esc(t.status)+'</span></div><p class="muted">'+number(t.quantity)+'× · '+esc(t.message||"Keine Anfangsnachricht")+'</p><div class="ticket-chat" id="ticket-chat">'+(history||empty("Noch keine Nachrichten."))+'</div>'+(t.status==="closed"?'<div class="notice">Dieses Ticket ist geschlossen.</div>':'<form id="ticket-reply-form" class="chat-compose"><input class="input" id="ticket-reply" maxlength="2000" placeholder="Nachricht schreiben …" required><button class="btn">Senden</button></form>');
-    $("ticket-reply-form")?.addEventListener("submit",async e=>{e.preventDefault();const input=$("ticket-reply");const message=input.value.trim();if(!message)return;const {error}=await db.from("market_ticket_messages").insert({ticket_id:ticketId,user_id:currentUser.id,message});if(error)toast(error.message,"error");else{input.value="";openMarketTicket(ticketId);}});
-  })().catch(error=>{$("ticket-modal-content").innerHTML='<div class="notice error">'+esc(error.message)+'</div>';});
-}
-function wireMarket() {
-  document.querySelectorAll("[data-market-ticket]").forEach(button=>button.addEventListener("click",()=>{
-    if(!currentUser){go("login");return;}
-    openMarketTicketCreator(button.dataset.marketTicket,button.closest(".market-card")?.querySelector("h2")?.textContent||"Market Item");
-  }));
-}
-function wirePage(route) {
-  if(route==="login")wireLogin();
-  if(route==="chat")wireChat();
-  if(route==="minigames")wireReaction();
-  if(route==="building")wireBuilding();
-  if(route==="applications")wireApplications();
-  if(route==="profile")$("logout-btn")?.addEventListener("click",logout);
-  if(route==="settings")wireSettings();
-  if(route==="admin")wireAdmin();
-  if(route==="market")wireMarket();
-  if(route==="market-tickets")document.querySelectorAll("[data-ticket-open]").forEach(el=>el.addEventListener("click",()=>openMarketTicket(Number(el.dataset.ticketOpen))));
-
-  if(route==="leaderboards"){
-    document.querySelectorAll("[data-leaderboard-game]").forEach(button=>button.addEventListener("click",()=>{
-      document.querySelectorAll("[data-leaderboard-game]").forEach(b=>b.classList.toggle("active",b===button));
-      document.querySelectorAll("[data-board]").forEach(panel=>panel.hidden=panel.dataset.board!==button.dataset.leaderboardGame);
-    }));
-  }
-}
-async function logout(){await db.auth.signOut();await refreshAuth();go("home");await renderPage();toast("Du wurdest abgemeldet.");}
-
-function wireLogin() {
-  let mode="login";
-  const setMode=(next)=>{
-    mode=next;
-    $("auth-title").textContent=mode==="login"?"Anmelden":"Account erstellen";
-    $("auth-submit").textContent=mode==="login"?"Einloggen":"Account erstellen";
-    $("signup-confirm").classList.toggle("hidden",mode==="login");
-    $("auth-password").autocomplete=mode==="login"?"current-password":"new-password";
-    $("tab-login").className=mode==="login"?"btn":"btn secondary";
-    $("tab-signup").className=mode==="signup"?"btn":"btn secondary";
-    $("auth-message").textContent=mode==="login"?"Melde dich mit deinem Benutzernamen und Passwort an.":"Mindestens 12 Zeichen, Groß-/Kleinbuchstaben, Zahl und Sonderzeichen.";
-  };
-  $("tab-login").onclick=()=>setMode("login");
-  $("tab-signup").onclick=()=>setMode("signup");
-  $("auth-form").onsubmit=async(event)=>{
-    event.preventDefault();
-    const username=$("auth-username").value.trim().toLowerCase();
-    const password=$("auth-password").value;
-    const msg=$("auth-message");
-    if(!/^[a-z0-9_]{3,20}$/.test(username)){msg.textContent="Ungültiger Benutzername.";return;}
-    if(mode==="signup" && $("auth-confirm").value!==password){msg.textContent="Die Passwörter stimmen nicht überein.";return;}
-    const button=$("auth-submit");button.disabled=true;msg.textContent="Bitte warten …";
-    try{
-      if(mode==="signup"){
-        await authFunction({action:"signup",username,password});
-      }
-      const response=await authFunction({action:"login",username,password});
-      await db.auth.setSession(response.session);
-      await refreshAuth();
-      go("home");await renderPage();toast(mode==="signup"?"Account erstellt. Willkommen bei KRAKE SMP!":"Erfolgreich angemeldet.","success");
-    }catch(error){msg.textContent=error.message;button.disabled=false;}
-  };
-}
 async function loadChatMessages() {
-  const {data,error}=await db.from("chat_messages").select("id,user_id,message,created_at")
-    .is("deleted_at",null).order("created_at",{ascending:false}).limit(100);
+  const {data,error}=await db.from("chat_messages").select("id,user_id,message,created_at").is("deleted_at",null).order("created_at",{ascending:false}).limit(100);
   if(error)throw error;
-  const rows=(data??[]).reverse();
-  const ids=[...new Set(rows.map(m=>m.user_id).filter(Boolean))];
+  const rows=(data??[]).reverse(),ids=[...new Set(rows.map(m=>m.user_id).filter(Boolean))];
   let profilesById=new Map();
   if(ids.length){
-    const {data:profilesData}=await db.from("profiles").select("id,username,display_name,verified").in("id",ids);
-    profilesById=new Map((profilesData??[]).map(p=>[p.id,p]));
+    const {data:profilesData,error:profilesError}=await db.from("profiles").select("id,username,display_name,verified").in("id",ids);
+    if(profilesError)throw profilesError;
+    const {data:roleRows,error:roleError}=await db.from("user_roles").select("user_id,roles(name,display_name,priority)").in("user_id",ids);
+    if(roleError)console.warn("Chat role refresh failed:",roleError.message);
+    const rolesById=new Map();
+    (roleRows??[]).forEach(r=>{if(!rolesById.has(r.user_id))rolesById.set(r.user_id,[]);if(r.roles)rolesById.get(r.user_id).push(r.roles);});
+    profilesById=new Map((profilesData??[]).map(p=>[p.id,{...p,roles:rolesById.get(p.id)||[]}]));
   }
   lastChatMessages=rows.map(m=>({...m,profiles:profilesById.get(m.user_id)||null}));
   const node=$("chat-window");if(!node)return;
-  node.innerHTML=lastChatMessages.map(m=>'<article class="chat-message"><div><span class="who">'+esc(m.profiles?.display_name||m.profiles?.username||"Player")+badge(m.profiles?.verified)+'</span><span class="when">'+dateTime(m.created_at)+'</span>'+(currentUser&&currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':"")+'</div><p>'+esc(m.message)+'</p></article>').join("")||empty("Noch keine Nachrichten. Starte die Unterhaltung!");
+  node.innerHTML=lastChatMessages.map(chatMessageMarkup).join("")||empty("Noch keine Nachrichten. Starte die Unterhaltung!");
   node.scrollTop=node.scrollHeight;
 }
+
+
 function showConfirm(title,message,confirmText="Bestätigen"){return new Promise(resolve=>{const old=$("krake-confirm");if(old)old.remove();const el=document.createElement("div");el.id="krake-confirm";el.className="krake-modal";el.innerHTML='<div class="krake-modal-backdrop"></div><div class="krake-modal-card confirm-modal"><button class="modal-close" type="button" data-confirm-no>×</button><div class="eyebrow">BESTÄTIGUNG</div><h2>'+esc(title)+'</h2><p class="muted">'+esc(message)+'</p><div class="action-row"><button class="btn danger" data-confirm-yes>'+esc(confirmText)+'</button><button class="btn secondary" data-confirm-no>Abbrechen</button></div></div>';document.body.appendChild(el);const done=v=>{el.remove();resolve(v);};el.querySelectorAll("[data-confirm-no]").forEach(b=>b.onclick=()=>done(false));el.querySelector("[data-confirm-yes]").onclick=()=>done(true);el.querySelector(".krake-modal-backdrop").onclick=()=>done(false);});}
 
 function wireChat() {
   $("chat-form")?.addEventListener("submit",async event=>{
     event.preventDefault();
     if(!currentUser){toast("Bitte zuerst anmelden.","error");return;}
-    const input=$("chat-input");const message=input.value.trim();if(!message)return;
-    const submit=event.currentTarget.querySelector("button[type=submit],button:not([type])");
+    const input=$("chat-input"),message=input?.value.trim();
+    if(!message)return;
+    const submit=event.currentTarget.querySelector("button[type=submit]");
     if(submit)submit.disabled=true;
-    const {error}=await db.from("chat_messages").insert({user_id:currentUser.id,message});
-    if(submit)submit.disabled=false;
-    if(error){
+    try{
+      const {error}=await db.from("chat_messages").insert({user_id:currentUser.id,message});
+      if(error)throw error;
+      input.value="";
+      await loadChatMessages();
+    }catch(error){
       console.error("Chat send failed",error);
       toast("Chat konnte nicht gesendet werden: "+(error.message||"Unbekannter Fehler"),"error");
-      return;
-    }
-    input.value="";
-    await loadChatMessages().catch(err=>console.error("Chat refresh failed",err));
+    }finally{if(submit)submit.disabled=false;}
   });
-  $("chat-window")?.addEventListener("click",async event=>{
+  const chatWindow=$("chat-window");
+  chatWindow?.addEventListener("click",async event=>{
     const mod=event.target.closest("[data-chat-delete],[data-chat-mute],[data-chat-ban]");
     if(mod&&isAdmin()){
+      if(mod.disabled)return;
       try{
-        if(mod.dataset.chatDelete){if(!await showConfirm("Nachricht löschen?","Diese Nachricht wird für den Chat ausgeblendet.","Löschen"))return;await callAdmin("delete_chat_message",{message_id:Number(mod.dataset.chatDelete)});toast("Nachricht gelöscht.","success");await loadChatMessages();return;}
+        if(mod.dataset.chatDelete){
+          const messageId=Number(mod.dataset.chatDelete);
+          if(!Number.isSafeInteger(messageId)||messageId<=0)throw new Error("Ungültige Nachrichten-ID.");
+          mod.disabled=true;
+          await callAdmin("delete_chat_message",{message_id:messageId});
+          await loadChatMessages();
+          toast("Nachricht gelöscht.","success");
+          return;
+        }
         const uid=mod.dataset.chatMute||mod.dataset.chatBan;
-        if(mod.dataset.chatMute){if(!await showConfirm("Timeout setzen?","Der Benutzer kann für die gewählte Zeit nicht schreiben.","Timeout setzen"))return;const hours=Number(prompt("Timeout in Stunden?","1"));if(!Number.isFinite(hours)||hours<=0)return;await callAdmin("mute",{user_id:uid,reason:"Chat-Moderation",expires_at:new Date(Date.now()+hours*3600000).toISOString()});toast("Timeout gesetzt.","success");await loadChatMessages();return;}
-        if(!await showConfirm("Benutzer sperren?","Der Benutzer wird für den Chat gesperrt.","Sperren"))return;await callAdmin("ban",{user_id:uid,reason:"Chat-Moderation",expires_at:null});toast("Benutzer gesperrt.","success");await loadChatMessages();return;
-      }catch(error){toast(error.message||"Moderationsaktion fehlgeschlagen.","error");return;}
+        if(mod.dataset.chatMute){
+          if(!await showConfirm("Timeout setzen?","Der Benutzer kann für die gewählte Zeit nicht schreiben.","Timeout setzen"))return;
+          const hours=Number(prompt("Timeout in Stunden?","1"));
+          if(!Number.isFinite(hours)||hours<=0)return;
+          mod.disabled=true;
+          await callAdmin("mute",{user_id:uid,reason:"Chat-Moderation",expires_at:new Date(Date.now()+hours*3600000).toISOString()});
+          toast("Timeout gesetzt.","success");
+          await loadChatMessages();
+          return;
+        }
+        if(!await showConfirm("Benutzer sperren?","Der Benutzer wird für den Chat gesperrt.","Sperren"))return;
+        mod.disabled=true;
+        await callAdmin("ban",{user_id:uid,reason:"Chat-Moderation",expires_at:null});
+        toast("Benutzer gesperrt.","success");
+        await loadChatMessages();
+        return;
+      }catch(error){
+        if(mod.isConnected)mod.disabled=false;
+        toast(error.message||"Moderationsaktion fehlgeschlagen.","error");
+        return;
+      }
     }
-
-    const button=event.target.closest("[data-report]");if(!button||!currentUser)return;
-    const reason=prompt("Warum möchtest du diese Nachricht melden?");if(!reason)return;
+    const button=event.target.closest("[data-report]");
+    if(!button||!currentUser)return;
+    const reason=prompt("Warum möchtest du diese Nachricht melden?");
+    if(!reason)return;
     const {error}=await db.from("chat_reports").insert({message_id:Number(button.dataset.report),reporter_user_id:currentUser.id,reason});
     toast(error?error.message:"Nachricht wurde gemeldet.",error?"error":"success");
   });
-  activeChatChannel=db.channel("krake-global-chat")
-    .on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages"},()=>loadChatMessages().catch(console.error))
-    .subscribe((status)=>{ if(status==="CHANNEL_ERROR"||status==="TIMED_OUT") console.warn("Chat realtime:",status); });
+  activeChatChannel=db.channel("krake-global-chat").on("postgres_changes",{event:"INSERT",schema:"public",table:"chat_messages"},()=>loadChatMessages().catch(console.error)).subscribe((status)=>{
+    if(status==="CHANNEL_ERROR"||status==="TIMED_OUT")console.warn("Chat realtime:",status);
+  });
   chatPollTimer=window.setInterval(()=>loadChatMessages().catch(console.error),5000);
 }
+
+
 function wireReaction() {
   const stage=$("game-stage"), area=$("game-area");
   if(!stage||!area)return;
