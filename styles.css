@@ -651,7 +651,8 @@ body{background:
 }
 .role-aura:hover .role-tooltip,
 .role-aura:focus .role-tooltip,
-.role-aura:focus-visible .role-tooltip{
+.role-aura:focus-visible .role-tooltip,
+.role-aura.tooltip-open .role-tooltip{
   opacity:1;
   visibility:visible;
   transform:translate(-50%,0) scale(1);
@@ -678,7 +679,8 @@ body{background:
   }
   .role-aura:hover .role-tooltip{opacity:0;visibility:hidden}
   .role-aura:focus .role-tooltip,
-  .role-aura:focus-visible .role-tooltip{
+  .role-aura:focus-visible .role-tooltip,
+  .role-aura.tooltip-open .role-tooltip{
     opacity:1;
     visibility:visible;
     transform:translate(-50%,0) scale(1);
