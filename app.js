@@ -749,7 +749,7 @@ function wireLogin() {
       const response=await authFunction({action:"login",username,password});
       await db.auth.setSession(response.session);
       await refreshAuth();
-      go("home");await renderPage();toast(mode==="signup"?"Account erstellt. Willkommen bei KRAKE SMP!":"Erfolgreich angemeldet.","success");
+      go("dashboard");await renderPage();toast(mode==="signup"?"Account erstellt. Willkommen bei KRAKE SMP!":"Erfolgreich angemeldet.","success");
     }catch(error){msg.textContent=error.message;button.disabled=false;}
   };
 }
