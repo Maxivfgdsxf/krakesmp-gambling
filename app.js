@@ -217,7 +217,7 @@ async function renderChat() {
   lastChatMessages = messages.data??[];
   const items = lastChatMessages.map(m=>`
     <article class="chat-message">
-      <div><span class="who">${esc(m.profiles?.username||"Player")}${badge(m.profiles?.verified)}</span><span class="when">${dateTime(m.created_at)}</span>
+      <div><span class="who">${esc(m.username||"Player")}${badge(m.profiles?.verified)}</span><span class="when">${dateTime(m.created_at)}</span>
       ${currentUser && currentUser.id!==m.user_id?'<button class="btn ghost small" data-report="'+m.id+'">Melden</button>':""}</div>
       <p>${esc(m.message)}</p>
     </article>
@@ -274,12 +274,13 @@ async function renderBuilding() {
   if(!currentUser)return pageHead("PLAYER SERVICE","Building Service","Reiche deinen Bauauftrag ein und bespreche Details privat mit dem Team.")+'<div class="card">'+empty("Melde dich an, um einen Building-Auftrag zu erstellen.")+'<button class="btn" data-route="login">Anmelden</button></div>';
   const {data:orders,error}=await db.from("building_orders").select("id,title,description,budget,status,created_at").eq("user_id",currentUser.id).order("created_at",{ascending:false});
   if(error)throw error;
-  const orderIds=(orders??[]).map(o=>o.id);
-  const messageResult=orderIds.length?await db.from("building_messages").select("id,order_id,user_id,message,created_at,profiles(username)").in("order_id",orderIds).order("created_at",{ascending:true}):{data:[],error:null};
-  if(messageResult.error)throw messageResult.error;
-  const orderMessages=messageResult.data??[];
+  const messageResults=await Promise.all((orders??[]).map(async o=>{
+    const {data,error}=await db.rpc("building_message_history",{p_order_id:o.id});
+    if(error)throw error;return data??[];
+  }));
+  const orderMessages=messageResults.flat();
   const cards=(orders??[]).map(o=>{
-    const history=orderMessages.filter(m=>m.order_id===o.id).map(m=>'<div class="chat-message"><div class="who">'+esc(m.profiles?.username||"Team")+' <span class="when">'+dateTime(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>').join("");
+    const history=orderMessages.filter(m=>m.order_id===o.id).map(m=>'<div class="chat-message"><div class="who">'+esc(m.username||"Team")+' <span class="when">'+dateTime(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>').join("");
     return '<article class="list-item"><div class="item-head"><strong>'+esc(o.title)+'</strong><span class="pill">'+esc(o.status)+'</span></div><p>'+esc(o.description)+'</p><div class="inline-meta">Budget: '+(o.budget===null?"Offen":number(o.budget)+" ◆")+' · '+dateTime(o.created_at)+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch keine Nachrichten vom Team.</div>')+'</div><form class="chat-compose" data-building-message="'+o.id+'"><input class="input" name="message" maxlength="2000" placeholder="Nachricht an das Team …" required><button class="btn small">Senden</button></form></article>';
   }).join("");
   return pageHead("PLAYER SERVICE","Building Service","Was soll gebaut werden? Das Team kann den Status aktualisieren und mit dir schreiben.")+
@@ -290,10 +291,11 @@ async function renderApplications() {
   if(!currentUser)return pageHead("JOIN THE TEAM","Team bewerben","Bewirb dich als Helper, Moderator oder Media.")+'<div class="card">'+empty("Melde dich an, um dich fürs Team zu bewerben.")+'<button class="btn" data-route="login">Anmelden</button></div>';
   const {data,error}=await db.from("applications").select("id,desired_role,reason,experience,status,created_at").eq("user_id",currentUser.id).order("created_at",{ascending:false});
   if(error)throw error;
-  const applicationIds=(data??[]).map(a=>a.id);
-  const messageResult=applicationIds.length?await db.from("application_messages").select("id,application_id,user_id,message,created_at,profiles(username)").in("application_id",applicationIds).order("created_at",{ascending:true}):{data:[],error:null};
-  if(messageResult.error)throw messageResult.error;
-  const applicationMessages=messageResult.data??[];
+  const messageResults=await Promise.all((data??[]).map(async a=>{
+    const {data,error}=await db.rpc("application_message_history",{p_application_id:a.id});
+    if(error)throw error;return (data??[]).map(m=>({...m,application_id:a.id}));
+  }));
+  const applicationMessages=messageResults.flat();
   const cards=(data??[]).map(a=>{
     const history=applicationMessages.filter(m=>m.application_id===a.id).map(m=>'<div class="chat-message"><div class="who">'+esc(m.profiles?.username||"Team")+' <span class="when">'+dateTime(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>').join("");
     return '<article class="list-item"><div class="item-head"><strong>'+esc(a.desired_role)+'</strong><span class="pill">'+esc(a.status)+'</span></div><p>'+esc(a.reason)+'</p><div class="inline-meta">'+dateTime(a.created_at)+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch keine Rückfragen vom Team.</div>')+'</div><form class="chat-compose" data-application-message="'+a.id+'"><input class="input" name="message" maxlength="2000" placeholder="Nachricht zur Bewerbung …" required><button class="btn small">Senden</button></form></article>';
@@ -514,20 +516,22 @@ async function loadAdminSection(section) {
       node.innerHTML='<div class="card"><h2>Offene Minecraft-Verifizierungen</h2><div class="list">'+((data??[]).map(v=>'<article class="list-item"><div class="item-head"><strong>'+esc(v.profiles?.username||v.user_id)+'</strong><span class="pill red">pending</span></div><p>Minecraft: <strong>'+esc(v.minecraft_name)+'</strong></p><div class="inline-meta">'+dateTime(v.requested_at)+'</div><div class="action-group"><button class="btn small" data-verify="yes" data-id="'+v.id+'">Verifizieren</button><button class="btn small danger" data-verify="no" data-id="'+v.id+'">Ablehnen</button></div></article>').join("")||empty("Keine offenen Anträge."))+'</div></div>';
     } else if(section==="applications"){
       const {data,error}=await db.from("applications").select("id,user_id,desired_role,reason,experience,status,created_at,profiles(username)").order("created_at",{ascending:false}).limit(50);if(error)throw error;
-      const appIds=(data??[]).map(a=>a.id);
-      const appMsgResult=appIds.length?await db.from("application_messages").select("id,application_id,user_id,message,created_at,profiles(username)").in("application_id",appIds).order("created_at",{ascending:true}):{data:[],error:null};
-      if(appMsgResult.error)throw appMsgResult.error;
-      const appMessages=appMsgResult.data??[];
+      const appMsgResults=await Promise.all((data??[]).map(async a=>{
+        const {data:messages,error:messageError}=await db.rpc("application_message_history",{p_application_id:a.id});
+        if(messageError)throw messageError;return (messages??[]).map(m=>({...m,application_id:a.id}));
+      }));
+      const appMessages=appMsgResults.flat();
       node.innerHTML='<div class="card"><h2>Team-Bewerbungen</h2><div class="list">'+((data??[]).map(a=>{
         const history=appMessages.filter(m=>m.application_id===a.id).map(m=>'<div class="chat-message"><div class="who">'+esc(m.profiles?.username||"Player")+' <span class="when">'+dateTime(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>').join("");
         return '<article class="list-item"><div class="item-head"><strong>'+esc(a.profiles?.username||"Player")+' · '+esc(a.desired_role)+'</strong><span class="pill">'+esc(a.status)+'</span></div><p>'+esc(a.reason)+'</p><div class="inline-meta">'+esc(a.experience||"Keine Erfahrung angegeben")+' · '+dateTime(a.created_at)+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch kein Nachrichtenverlauf.</div>')+'</div><form class="chat-compose" data-admin-app-message="'+a.id+'"><input class="input" name="message" maxlength="2000" placeholder="Private Nachricht an Bewerber …" required><button class="btn small">Senden</button></form><div class="action-group"><button class="btn small" data-application-status="accepted" data-id="'+a.id+'">Annehmen + Rang</button><button class="btn small danger" data-application-status="rejected" data-id="'+a.id+'">Ablehnen</button><button class="btn small ghost" data-application-status="reviewing" data-id="'+a.id+'">In Prüfung</button></div></article>';
       }).join("")||empty("Keine Bewerbungen vorhanden."))+'</div></div>';
     } else if(section==="building"){
       const {data,error}=await db.from("building_orders").select("id,user_id,title,description,budget,status,created_at,profiles(username)").order("created_at",{ascending:false}).limit(50);if(error)throw error;
-      const orderIds=(data??[]).map(o=>o.id);
-      const orderMsgResult=orderIds.length?await db.from("building_messages").select("id,order_id,user_id,message,created_at,profiles(username)").in("order_id",orderIds).order("created_at",{ascending:true}):{data:[],error:null};
-      if(orderMsgResult.error)throw orderMsgResult.error;
-      const orderMessages=orderMsgResult.data??[];
+      const orderMsgResults=await Promise.all((data??[]).map(async o=>{
+        const {data:messages,error:messageError}=await db.rpc("building_message_history",{p_order_id:o.id});
+        if(messageError)throw messageError;return (messages??[]).map(m=>({...m,order_id:o.id}));
+      }));
+      const orderMessages=orderMsgResults.flat();
       node.innerHTML='<div class="card"><h2>Building-Aufträge</h2><div class="list">'+((data??[]).map(o=>{
         const history=orderMessages.filter(m=>m.order_id===o.id).map(m=>'<div class="chat-message"><div class="who">'+esc(m.profiles?.username||"Player")+' <span class="when">'+dateTime(m.created_at)+'</span></div><p>'+esc(m.message)+'</p></div>').join("");
         return '<article class="list-item"><div class="item-head"><strong>'+esc(o.title)+'</strong><span class="pill">'+esc(o.status)+'</span></div><p>'+esc(o.description)+'</p><div class="inline-meta">Von '+esc(o.profiles?.username||"Player")+' · Budget '+(o.budget===null?"offen":number(o.budget)+" ◆")+'</div><div class="list" style="margin:12px 0">'+(history||'<div class="form-note">Noch kein Nachrichtenverlauf.</div>')+'</div><form class="chat-compose" data-admin-building-message="'+o.id+'"><input class="input" name="message" maxlength="2000" placeholder="Private Nachricht an Spieler …" required><button class="btn small">Senden</button></form><div class="action-group">'+["reviewing","accepted","in_progress","completed","rejected"].map(s=>'<button class="btn small '+(s==="rejected"?"danger":"secondary")+'" data-building-status="'+s+'" data-id="'+o.id+'">'+s+'</button>').join("")+'</div></article>';
